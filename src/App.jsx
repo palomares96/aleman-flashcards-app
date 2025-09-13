@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 // 1. Importaciones de tus componentes
 import AppLayout from './components/AppLayout.jsx';
 import Login from './components/Login.jsx';
-import CreateUsername from './components/CreateUsername.jsx';
+import CreateUsername from './components/CreateUserName.jsx';
 
 // 2. Importaciones de Firebase (solo lo que App.jsx necesita)
 import { onAuthStateChanged } from "firebase/auth";
