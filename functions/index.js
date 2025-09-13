@@ -1,83 +1,103 @@
-const functions = require("firebase-functions");
+// functions/index.js
+
+// Importaciones para la versión 2 de Cloud Functions
+const { onCall } = require("firebase-functions/v2/https");
+const { onMessagePublished } = require("firebase-functions/v2/pubsub");
+const { setGlobalOptions } = require("firebase-functions/v2");
+
 const admin = require("firebase-admin");
+const { CloudBillingClient } = require("@google-cloud/billing");
+
 admin.initializeApp();
-
 const db = admin.firestore();
+const billing = new CloudBillingClient();
 
-/**
- * Esta función se ejecuta automáticamente todos los días a las 5:00 AM.
- * Su trabajo es calcular y guardar una "foto" (snapshot) del progreso
- * de cada usuario para poder mostrar gráficos de evolución.
- */
-exports.calculateDailyMasteryStats = functions.pubsub
-  .schedule("every day 05:00")
-  .timeZone("Europe/Madrid") // Puedes ajustar tu zona horaria
-  .onRun(async (context) => {
-    console.log("Iniciando cálculo de estadísticas diarias de dominio.");
+// Establecemos la región para todas las funciones en este archivo
+setGlobalOptions({ region: "europe-west1" });
 
-    // Nuevos criterios de dominio
-    const MASTERY_CRITERIA = {
-      MIN_PLAYS: 5,
-      MAX_ERROR_RATE: 0.2,
-      STREAK_NEEDED: 4,
-    };
+// --- Función para gestionar solicitudes de amistad ---
+exports.handleFriendRequest = onCall(async (request) => {
+  // 1. Verificamos que el usuario esté autenticado
+  if (!request.auth) {
+    throw new onCall.HttpsError(
+      "unauthenticated",
+      "Debes estar autenticado.",
+    );
+  }
 
-    try {
-      // 1. Obtener la lista de todos los usuarios que tienen progreso guardado.
-      const usersSnapshot = await db.collection("users").get();
-      if (usersSnapshot.empty) {
-        console.log("No hay usuarios con progreso. Saliendo.");
-        return null;
-      }
-      const userIds = usersSnapshot.docs.map((doc) => doc.id);
+  const { requestId, action } = request.data;
+  const myUid = request.auth.uid;
 
-      // 2. Procesar cada usuario uno por uno.
-      for (const userId of userIds) {
-        console.log(`Procesando usuario: ${userId}`);
+  // ... (el resto de la lógica es la misma)
+  const requestRef = db.collection("friendRequests").doc(requestId);
+  const requestDoc = await requestRef.get();
 
-        const progressCollectionRef = db.collection(`users/${userId}/progress`);
-        const progressSnapshot = await progressCollectionRef.get();
+  if (!requestDoc.exists) {
+    throw new onCall.HttpsError("not-found", "La solicitud no existe.");
+  }
+  const requestData = requestDoc.data();
+  if (requestData.to_uid !== myUid) {
+    throw new onCall.HttpsError(
+      "permission-denied",
+      "No puedes gestionar esta solicitud.",
+    );
+  }
 
-        if (progressSnapshot.empty) {
-          console.log(`Usuario ${userId} no tiene progreso. Saltando.`);
-          continue; // Pasa al siguiente usuario
-        }
-
-        let masteredWordsCount = 0;
-
-        // 3. Revisar cada palabra en el progreso del usuario.
-        progressSnapshot.forEach((doc) => {
-          const progress = doc.data();
-          const totalPlays = (progress.correct || 0) + (progress.incorrect || 0);
-          const errorRate = totalPlays > 0 ? (progress.incorrect || 0) / totalPlays : 0;
-          const streak = progress.correctStreak || 0;
-
-          // 4. Aplicar las nuevas reglas de "palabra dominada".
-          const isMasteredByPlays = totalPlays >= MASTERY_CRITERIA.MIN_PLAYS && errorRate < MASTERY_CRITERIA.MAX_ERROR_RATE;
-          const isMasteredByStreak = streak >= MASTERY_CRITERIA.STREAK_NEEDED;
-
-          if (isMasteredByPlays || isMasteredByStreak) {
-            masteredWordsCount++;
-          }
-        });
-
-        // 5. Guardar el resultado en la nueva colección `dailyStats`.
-        const today = new Date().toISOString().split("T")[0]; // Formato YYYY-MM-DD
-        const statDocRef = db.collection("dailyStats").doc(`${userId}_${today}`);
-
-        await statDocRef.set({
-          userId: userId,
-          date: admin.firestore.Timestamp.now(),
-          masteredCount: masteredWordsCount,
-        });
-
-        console.log(`Estadísticas guardadas para ${userId}: ${masteredWordsCount} palabras dominadas.`);
-      }
-
-      console.log("Cálculo de estadísticas diarias completado exitosamente.");
-      return null;
-    } catch (error) {
-      console.error("Error al calcular las estadísticas diarias:", error);
-      return null;
+  const theirUid = requestData.from_uid;
+  
+  try {
+    if (action === "accept") {
+      const batch = db.batch();
+      const myFriendRef = db.doc(`users/${myUid}/friends/${theirUid}`);
+      const theirFriendRef = db.doc(`users/${theirUid}/friends/${myUid}`);
+      batch.update(requestRef, { status: "accepted" });
+      batch.set(myFriendRef, {
+        displayName: requestData.from_displayName,
+        since: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      batch.set(theirFriendRef, {
+        displayName: requestData.to_displayName,
+        since: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      await batch.commit();
+      return { success: true, message: "Amigo añadido." };
+    } else if (action === "decline") {
+      await requestRef.delete();
+      return { success: true, message: "Solicitud rechazada." };
+    } else {
+      throw new onCall.HttpsError("invalid-argument", "Acción no válida.");
     }
-  });
+  } catch (error) {
+    throw new onCall.HttpsError("internal", "Error al procesar la solicitud.");
+  }
+});
+
+
+// --- Función para desactivar la facturación ---
+exports.stopBilling = onMessagePublished("budget-killswitch-topic", async (event) => {
+    const pubsubMessage = event.data.message;
+    const budgetData = pubsubMessage.json;
+
+    if (budgetData.costAmount <= budgetData.budgetAmount) {
+        console.log("El coste no ha superado el presupuesto. No se hace nada.");
+        return;
+    }
+
+    console.log("¡Presupuesto superado! Desactivando la facturación...");
+    const project = await billing.getProjectBillingInfo({
+        name: process.env.GCLOUD_PROJECT,
+    });
+    const projectName = project[0].name;
+
+    if (!projectName || !project[0].billingEnabled) {
+        console.log("La facturación ya está desactivada.");
+        return;
+    }
+    
+    await billing.updateProjectBillingInfo({
+        name: projectName,
+        projectBillingInfo: { billingAccountName: "" },
+    });
+
+    console.log("¡FACTURACIÓN DESACTIVADA!");
+});

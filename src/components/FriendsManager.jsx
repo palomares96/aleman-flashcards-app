@@ -1,6 +1,8 @@
 import { db } from '../firebase.js';
 import { collection, onSnapshot, query, where, getDocs, addDoc, serverTimestamp, writeBatch, doc, deleteDoc } from "firebase/firestore";
 import React, { useState, useEffect } from 'react';
+import { getFunctions, httpsCallable } from "firebase/functions";
+import { getApp } from "firebase/app"; 
 
 // --- Iconos (sin cambios) ---
 const CheckCircleIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
@@ -103,21 +105,25 @@ function FriendsManager({ user, userProfile }) {
         }
     };
 
-    const handleRequest = async (request, action) => {
-        if (action === 'accept') {
-            const batch = writeBatch(db);
-            const requestRef = doc(db, "friendRequests", request.id);
-            const myFriendRef = doc(db, `users/${user.uid}/friends`, request.from_uid);
-            const theirFriendRef = doc(db, `users/${request.from_uid}/friends`, user.uid);
-            batch.update(requestRef, { status: 'accepted' });
-            batch.set(myFriendRef, { displayName: request.from_displayName, since: serverTimestamp() });
-            batch.set(theirFriendRef, { displayName: userProfile.displayName, since: serverTimestamp() });
-            await batch.commit();
-        } else if (action === 'decline') {
-            const requestRef = doc(db, "friendRequests", request.id);
-            await deleteDoc(requestRef);
-        }
-    };
+    // EN: FriendsManager.jsx
+
+const handleRequest = async (request, action) => {
+    console.log(`Llamando a la Cloud Function con action: ${action}, requestId: ${request.id}`);
+    setFeedback("Procesando...");
+
+    // --- CAMBIO CLAVE: ESPECIFICAMOS LA REGIÓN ---
+    const functions = getFunctions(getApp(), "europe-west1"); 
+    const handleFriendRequestFunc = httpsCallable(functions, 'handleFriendRequest');
+
+    try {
+        const result = await handleFriendRequestFunc({ requestId: request.id, action: action });
+        console.log("Resultado de la Cloud Function:", result.data);
+        setFeedback(result.data.message);
+    } catch (error) {
+        console.error("Error al llamar a la Cloud Function:", error);
+        setFeedback("Error: " + error.message);
+    }
+};
 
     const TabButton = ({ tabName, label }) => (
         <button 
