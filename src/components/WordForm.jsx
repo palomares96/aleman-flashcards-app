@@ -8,7 +8,7 @@ import React, { useState, useEffect } from 'react';
 // COMPONENTE #2: Formulario para añadir palabras
 // =================================================================================
 
-function WordForm() {
+function WordForm({ user }) {
     const [formData, setFormData] = useState(initialFormData);
     const [categories, setCategories] = useState([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
