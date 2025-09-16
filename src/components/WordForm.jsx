@@ -27,38 +27,75 @@ function WordForm() {
     const removePrefix = (index) => setFormData(p => ({...p, attributes: {...p.attributes, separablePrefixes: p.attributes.separablePrefixes.filter((_, i) => i !== index)}}));
 
     const handleSubmit = async (e) => {
-        if (!user) return
-        e.preventDefault(); setIsSubmitting(true); setFeedback({ type: '', message: '' });
-        const duplicateQuery = query(collection(db, `users/${user.uid}/words`), where("german", "==", formData.german.trim()));
-        if (!(await getDocs(duplicateQuery)).empty) { setFeedback({ type: 'error', message: 'Esta palabra ya existe.' }); setIsSubmitting(false); return; }
+    e.preventDefault();
 
-        try {
-            const categoryName = formData.category.trim(); let categoryId = categories.find(c => c.name.toLowerCase() === categoryName.toLowerCase())?.id;
-            if (categoryName && !categoryId) { const newCatRef = await addDoc(collection(db, "categories"), { name_es: categoryName, name_de: categoryName }); setCategories(p => [...p, { id: newCatRef.id, name: categoryName }]); categoryId = newCatRef.id; }
-            
-            const newWord = { 
-                german: formData.german.trim(), 
-                spanish: formData.spanish.trim(), 
-                type: formData.type, 
-                difficulty: parseInt(formData.difficulty), 
-                ...(categoryId && { categoryId }), 
-                attributes: {},
-                createdAt: serverTimestamp()
-            };
+    // Comprobación de seguridad: si no hay usuario, no hacemos nada.
+    if (!user) {
+        setFeedback({ type: 'error', message: 'Error: Usuario no identificado.' });
+        return;
+    }
 
-            if (formData.type === 'noun') newWord.attributes.gender = formData.attributes.gender;
-            if (formData.type === 'preposition') newWord.attributes.case = formData.attributes.case;
-            if (formData.type === 'verb') {
-                newWord.attributes.isRegular = formData.attributes.isRegular;
-                if (!formData.attributes.isRegular) { newWord.attributes.pastTense = formData.attributes.pastTense; newWord.attributes.participle = formData.attributes.participle; }
-                const prefixes = formData.attributes.separablePrefixes.filter(p => p.prefix.trim() && p.meaning.trim());
-                if (prefixes.length > 0) newWord.attributes.separablePrefixes = prefixes;
+    setIsSubmitting(true);
+    setFeedback({ type: '', message: '' });
+
+    // La ruta ahora apunta a la subcolección del usuario
+    const userWordsCollection = collection(db, `users/${user.uid}/words`);
+    const duplicateQuery = query(userWordsCollection, where("german", "==", formData.german.trim()));
+
+    // Usamos un try...catch para que los errores no sean silenciosos
+    try {
+        if (!(await getDocs(duplicateQuery)).empty) {
+            setFeedback({ type: 'error', message: 'Esta palabra ya existe.' });
+            setIsSubmitting(false);
+            return;
+        }
+
+        const categoryName = formData.category.trim();
+        let categoryId = categories.find(c => c.name.toLowerCase() === categoryName.toLowerCase())?.id;
+
+        if (categoryName && !categoryId) {
+            const newCatRef = await addDoc(collection(db, "categories"), { name_es: categoryName, name_de: categoryName });
+            setCategories(p => [...p, { id: newCatRef.id, name: categoryName }]);
+            categoryId = newCatRef.id;
+        }
+
+        const newWord = { 
+            german: formData.german.trim(), 
+            spanish: formData.spanish.trim(), 
+            type: formData.type, 
+            difficulty: parseInt(formData.difficulty), 
+            ...(categoryId && { categoryId }), 
+            attributes: {},
+            createdAt: serverTimestamp()
+        };
+
+        if (formData.type === 'noun') newWord.attributes.gender = formData.attributes.gender;
+        if (formData.type === 'preposition') newWord.attributes.case = formData.attributes.case;
+        if (formData.type === 'verb') {
+            newWord.attributes.isRegular = formData.attributes.isRegular;
+            if (!formData.attributes.isRegular) {
+                newWord.attributes.pastTense = formData.attributes.pastTense;
+                newWord.attributes.participle = formData.attributes.participle;
             }
+            const prefixes = formData.attributes.separablePrefixes.filter(p => p.prefix.trim() && p.meaning.trim());
+            if (prefixes.length > 0) newWord.attributes.separablePrefixes = prefixes;
+        }
 
-            await addDoc(collection(db, `users/${user.uid}/words`), newWord);
-            setFeedback({ type: 'success', message: '¡Palabra guardada!' }); setFormData(initialFormData); setTimeout(() => setFeedback({ type: '', message: '' }), 3000);
-        } catch (err) { console.error(err); setFeedback({ type: 'error', message: 'No se pudo guardar.' }); } finally { setIsSubmitting(false); }
-    };
+        // Guardamos la palabra en la subcolección correcta
+        await addDoc(userWordsCollection, newWord);
+
+        setFeedback({ type: 'success', message: '¡Palabra guardada!' });
+        setFormData(initialFormData);
+        setTimeout(() => setFeedback({ type: '', message: '' }), 3000);
+
+    } catch (err) {
+        console.error("Error al añadir palabra:", err); // Veremos el error en la consola
+        setFeedback({ type: 'error', message: 'No se pudo guardar la palabra.' });
+    } finally {
+        setIsSubmitting(false);
+    }
+};
+
 
     return (
         <div className="w-full max-w-lg mx-auto"><h1 className="mb-8 text-3xl font-bold text-gray-300">Añadir Palabra</h1>
