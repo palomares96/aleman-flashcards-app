@@ -36,59 +36,63 @@ function Game({ user }) {
   // Estado para la lista de amigos
   const [friends, setFriends] = useState([]);
 
-  useEffect(() => {
+  // EN: Game.jsx
+// Reemplaza tu primer useEffect por este:
+useEffect(() => {
     const fetchData = async () => {
-      if (!user) return;
-      setLoading(true);
-      try {
-        // <-- CORRECCIÓN 1: Se añade la carga de amigos aquí para que sea más eficiente -->
-        const [wordsSnapshot, categoriesSnapshot, progressSnapshot, friendsSnapshot] = await Promise.all([
-          getDocs(collection(db, `users/${user.uid}/words`)),
-          getDocs(collection(db, "categories")),
-          getDocs(collection(db, `users/${user.uid}/progress`)),
-          getDocs(collection(db, `users/${user.uid}/friends`)) // Carga los amigos a la vez
-        ]);
+        if (!user) return;
+        setLoading(true);
+        try {
+            const [wordsSnapshot, categoriesSnapshot, progressSnapshot, friendsSnapshot] = await Promise.all([
+                getDocs(collection(db, `users/${user.uid}/words`)), // Carga TUS palabras
+                getDocs(collection(db, "categories")),
+                getDocs(collection(db, `users/${user.uid}/progress`)),
+                getDocs(collection(db, `users/${user.uid}/friends`))
+            ]);
 
-        // Procesa la lista de amigos
-        const friendsList = friendsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setFriends(friendsList);
+            const friendsList = friendsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setFriends(friendsList);
 
-        const categoriesList = categoriesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const progressData = progressSnapshot.docs.reduce((acc, doc) => {
-          acc[doc.id] = doc.data(); return acc;
-        }, {});
+            const categoriesList = categoriesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const progressData = progressSnapshot.docs.reduce((acc, doc) => {
+                acc[doc.id] = doc.data(); return acc;
+            }, {});
 
-        const baseWords = wordsSnapshot.docs.map(doc => {
-            const wordId = doc.id;
-            const wordData = doc.data();
-            const progress = progressData[wordId] || { correct: 0, incorrect: 0, correctStreak: 0 };
-            const totalPlays = (progress.correct || 0) + (progress.incorrect || 0);
-            const errorRate = totalPlays > 0 ? (progress.incorrect || 0) / totalPlays : 0;
+            const baseWords = wordsSnapshot.docs.map(doc => {
+                const wordId = doc.id;
+                const wordData = doc.data();
+                const progress = progressData[wordId] || { correct: 0, incorrect: 0, correctStreak: 0 };
+                const totalPlays = (progress.correct || 0) + (progress.incorrect || 0);
+                const errorRate = totalPlays > 0 ? (progress.incorrect || 0) / totalPlays : 0;
+                
+                const isMasteredByPlays = totalPlays >= MASTERY_CRITERIA.MIN_PLAYS && errorRate < MASTERY_CRITERIA.MAX_ERROR_RATE;
+                const isMasteredByStreak = (progress.correctStreak || 0) >= MASTERY_CRITERIA.STREAK_NEEDED;
+                const isMastered = isMasteredByPlays || isMasteredByStreak;
+
+                return { id: wordId, ...wordData, progress: { ...progress, totalPlays, errorRate, isMastered } };
+            });
             
-            const isMasteredByPlays = totalPlays >= MASTERY_CRITERIA.MIN_PLAYS && errorRate < MASTERY_CRITERIA.MAX_ERROR_RATE;
-            const isMasteredByStreak = (progress.correctStreak || 0) >= MASTERY_CRITERIA.STREAK_NEEDED;
-            const isMastered = isMasteredByPlays || isMasteredByStreak;
+            const playableWords = [];
+            baseWords.forEach(word => {
+                playableWords.push(word);
+                if (word.type === 'verb' && word.attributes?.separablePrefixes) {
+                    word.attributes.separablePrefixes.forEach(p => {
+                        playableWords.push({ ...word, id: `${word.id}_${p.prefix}`, german: p.prefix + word.german, spanish: p.meaning, isDerived: true });
+                    });
+                }
+            });
+            
+            // Guardamos las palabras en los dos estados
+            setAllWords(playableWords);
+            setMyOriginalWords(playableWords); // <-- AÑADIDO
+            setCategories(categoriesList);
 
-            return { id: wordId, ...wordData, progress: { ...progress, totalPlays, errorRate, isMastered } };
-        });
-        
-        const playableWords = [];
-        baseWords.forEach(word => {
-            playableWords.push(word);
-            if (word.type === 'verb' && word.attributes?.separablePrefixes) {
-                word.attributes.separablePrefixes.forEach(p => {
-                    playableWords.push({ ...word, id: `${word.id}_${p.prefix}`, german: p.prefix + word.german, spanish: p.meaning, isDerived: true });
-                });
-            }
-        });
-        setAllWords(playableWords);
-        setCategories(categoriesList);
-
-      } catch (err) { setError("No se pudieron cargar los datos."); console.error(err); }
-      finally { setLoading(false); }
+        } catch (err) { setError("No se pudieron cargar los datos."); console.error(err); }
+        finally { setLoading(false); }
     };
     fetchData();
-  }, [user]);
+}, [user]);
+
   
   // <-- CORRECCIÓN 2: Este useEffect REEMPLAZA al que tenías. -->
   // Es asíncrono para poder consultar el progreso del amigo.
