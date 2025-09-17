@@ -93,25 +93,55 @@ useEffect(() => {
     fetchData();
 }, [user]);
 
-  
-  // <-- CORRECCIÓN 2: Este useEffect REEMPLAZA al que tenías. -->
-  // Es asíncrono para poder consultar el progreso del amigo.
-  useEffect(() => {
-    const applyFilters = async () => {
-        // Primero, aplicamos todos los filtros síncronos (los que ya tenías)
-        let words = allWords.filter(w => {
+  // EN: Game.jsx
+// Reemplaza el useEffect que aplica los filtros por este:
+useEffect(() => {
+    const applyFiltersAndLoadFriendWords = async () => {
+        let sourceWords = myOriginalWords; // Por defecto, usamos nuestras palabras
+
+        // --- LÓGICA PARA CARGAR MAZO DEL AMIGO ---
+        if (filters.friendPlay) {
+            const friendUid = filters.friendPlay;
+            console.log("Cargando palabras del amigo:", friendUid);
+            const friendWordsSnapshot = await getDocs(collection(db, `users/${friendUid}/words`));
+            
+            // Mapeamos las palabras del amigo SIN datos de progreso
+            sourceWords = friendWordsSnapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+                progress: { correct: 0, incorrect: 0, correctStreak: 0, totalPlays: 0, errorRate: 0, isMastered: false }
+            }));
+            
+            // Expandimos los verbos separables del amigo también
+            const friendPlayableWords = [];
+            sourceWords.forEach(word => {
+                friendPlayableWords.push(word);
+                if (word.type === 'verb' && word.attributes?.separablePrefixes) {
+                    word.attributes.separablePrefixes.forEach(p => {
+                        friendPlayableWords.push({ ...word, id: `${word.id}_${p.prefix}`, german: p.prefix + word.german, spanish: p.meaning, isDerived: true });
+                    });
+                }
+            });
+            sourceWords = friendPlayableWords;
+
+        } else if (allWords !== myOriginalWords) {
+             // Si deseleccionamos al amigo, volvemos a nuestro mazo original
+            sourceWords = myOriginalWords;
+        }
+
+        setAllWords(sourceWords); // Actualizamos el mazo principal con el del amigo o el nuestro
+
+        // --- FILTRADO NORMAL (ahora sobre el mazo correcto) ---
+        let words = sourceWords.filter(w => {
             if (filters.type && w.type !== filters.type) return false;
             if (filters.categoryId && w.categoryId !== filters.categoryId) return false;
             if (filters.difficulty && w.difficulty !== parseInt(filters.difficulty)) return false;
+            // ... (el resto de tus filtros de siempre)
             if (filters.type === 'noun' && filters.gender && w.attributes?.gender !== filters.gender) return false;
             if (filters.type === 'preposition' && filters.case && w.attributes?.case !== filters.case) return false;
-            if (filters.type === 'verb' && filters.separablePrefix) {
-                const hasPrefix = w.isDerived 
-                    ? w.german.toLowerCase().startsWith(filters.separablePrefix.toLowerCase()) 
-                    : w.attributes?.separablePrefixes?.some(p => p.prefix.toLowerCase().includes(filters.separablePrefix.toLowerCase()));
-                if (!hasPrefix) return false;
-            }
-            if (filters.performance) {
+            
+            // El filtro de rendimiento solo se aplica si no estamos jugando con un amigo
+            if (filters.performance && !filters.friendPlay) {
                 const p = w.progress;
                 if (filters.performance === 'new' && p.totalPlays >= 3) return false;
                 if (filters.performance === 'struggling' && (p.totalPlays < 3 || p.errorRate <= 0.3)) return false;
@@ -119,38 +149,17 @@ useEffect(() => {
             }
             return true;
         });
-
-        // Ahora, si hay un amigo seleccionado, aplicamos el filtro de amigo (que es asíncrono)
-        if (filters.friendPlay) {
-            const friendUid = filters.friendPlay;
-            // 1. Obtenemos el progreso del amigo
-            const progressRef = collection(db, `users/${friendUid}/progress`);
-            const progressSnapshot = await getDocs(progressRef);
-
-            // 2. Filtramos para encontrar las palabras que le cuestan
-            const strugglingWordIds = new Set();
-            progressSnapshot.forEach(doc => {
-                const data = doc.data();
-                const total = (data.correct || 0) + (data.incorrect || 0);
-                if (total > 3 && (data.incorrect / total) > 0.4) { // Criterio: +40% de error
-                    strugglingWordIds.add(doc.id);
-                }
-            });
-
-            // 3. Filtramos nuestro mazo ya filtrado para que solo incluya esas palabras
-            words = words.filter(word => strugglingWordIds.has(word.id.split('_')[0]));
-        }
-
+        
         setFilteredWords(words);
     };
 
-    if (allWords.length > 0) {
-        applyFilters();
-    } else {
-        setFilteredWords([]);
-    }
+    applyFiltersAndLoadFriendWords();
 
-  }, [filters, allWords, db]); // Añadimos 'db' a las dependencias
+}, [filters, myOriginalWords]); // Ahora depende de myOriginalWords
+
+  
+        
+    
 
   useEffect(() => {
     if (filteredWords.length === 0) return;
@@ -202,6 +211,13 @@ useEffect(() => {
   };
 
 const handleNextWord = async (answeredCorrectly) => {
+
+    if (filters.friendPlay) {
+        console.log("Modo amigo: no se guarda el progreso.");
+        setFlipped(false);
+        setTimeout(selectNextWord, 150);
+        return; // Salimos de la función para no guardar nada
+    }
     if (isAnimating || !palabraActual || !user) return;
 
     const baseWordId = palabraActual.id.split('_')[0];
