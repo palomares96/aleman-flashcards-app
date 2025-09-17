@@ -290,8 +290,9 @@ const handleNextWord = async (answeredCorrectly) => {
             <option value="">Nadie</option>
             {friends.map(friend => (
                 <option key={friend.id} value={friend.id}>
-                    Palabras difíciles de {friend.displayName}
-                </option>
+    Jugar con el mazo de {friend.displayName}
+</option>
+
             ))}
         </select>
     </div>
