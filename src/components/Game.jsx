@@ -15,6 +15,7 @@ const FilterIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 
 // =================================================================================
 function Game({ user }) {
   const [allWords, setAllWords] = useState([]);
+  const [myOriginalWords, setMyOriginalWords] = useState([]); 
   const [filteredWords, setFilteredWords] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
