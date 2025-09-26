@@ -140,7 +140,10 @@ exports.calculateDailyStats = onSchedule("every 24 hours", async (event) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0); // Normalizamos la fecha para el inicio del día
 
-    await db.collection("dailyStats").add({
+    const statId = `${userId}_${today.toISOString().split('T')[0]}`; // Ej: "hXJrG..._2025-09-26"
+
+    // Usamos .doc(statId).set() en lugar de .add()
+    await db.collection("dailyStats").doc(statId).set({
       userId: userId,
       masteredCount: masteredCount,
       date: admin.firestore.Timestamp.fromDate(today),
