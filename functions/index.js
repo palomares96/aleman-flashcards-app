@@ -101,3 +101,54 @@ exports.stopBilling = onMessagePublished("budget-killswitch-topic", async (event
 
     console.log("¡FACTURACIÓN DESACTIVADA!");
 });
+
+// EN: functions/index.js
+
+const { onSchedule } = require("firebase-functions/v2/scheduler");
+
+// Definimos los criterios de maestría aquí también
+const MASTERY_CRITERIA = {
+  MIN_PLAYS: 5,
+  MAX_ERROR_RATE: 0.2,
+  STREAK_NEEDED: 4,
+};
+
+// Esta función se ejecutará automáticamente cada 24 horas
+exports.calculateDailyStats = onSchedule("every 24 hours", async (event) => {
+  console.log("Ejecutando la tarea diaria de cálculo de estadísticas...");
+  const usersSnapshot = await db.collection("users").get();
+
+  for (const userDoc of usersSnapshot.docs) {
+    const userId = userDoc.id;
+    const progressSnapshot = await db.collection(`users/${userId}/progress`).get();
+
+    let masteredCount = 0;
+    progressSnapshot.forEach(progressDoc => {
+      const progress = progressDoc.data();
+      const totalPlays = (progress.correct || 0) + (progress.incorrect || 0);
+      const errorRate = totalPlays > 0 ? (progress.incorrect || 0) / totalPlays : 0;
+
+      const isMasteredByPlays = totalPlays >= MASTERY_CRITERIA.MIN_PLAYS && errorRate < MASTERY_CRITERIA.MAX_ERROR_RATE;
+      const isMasteredByStreak = (progress.correctStreak || 0) >= MASTERY_CRITERIA.STREAK_NEEDED;
+
+      if (isMasteredByPlays || isMasteredByStreak) {
+        masteredCount++;
+      }
+    });
+
+    // Guardamos el resultado en la colección dailyStats
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Normalizamos la fecha para el inicio del día
+
+    await db.collection("dailyStats").add({
+      userId: userId,
+      masteredCount: masteredCount,
+      date: admin.firestore.Timestamp.fromDate(today),
+    });
+
+    console.log(`Estadísticas guardadas para el usuario ${userId}: ${masteredCount} palabras dominadas.`);
+  }
+
+  console.log("Tarea de cálculo de estadísticas completada.");
+  return null;
+});
