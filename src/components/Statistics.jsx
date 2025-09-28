@@ -1,7 +1,37 @@
+// ===== Statistics.jsx - VERSIÓN FINAL CON GRÁFICO DE LÍNEA =====
+
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase.js';
 import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 import { MASTERY_CRITERIA } from '../config.js';
+
+// --- NUEVAS IMPORTACIONES PARA EL GRÁFICO ---
+import { Line } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler, // Importante para el relleno debajo de la línea
+} from 'chart.js';
+
+// --- REGISTRO DE COMPONENTES DE CHART.JS ---
+// Esto le dice a Chart.js qué elementos vamos a usar
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
+
 
 function StatsDashboard({ user }) {
     const [stats, setStats] = useState({
@@ -10,7 +40,7 @@ function StatsDashboard({ user }) {
         masteredByType: []
     });
     const [loading, setLoading] = useState(true);
-    const [timeframe, setTimeframe] = useState(7); // Cambiado a 7 días por defecto
+    const [timeframe, setTimeframe] = useState(7);
 
     useEffect(() => {
         const fetchStats = async () => {
@@ -29,7 +59,7 @@ function StatsDashboard({ user }) {
             
             const dailyData = dailyStatsSnapshot.docs
                 .map(doc => doc.data())
-                .filter(data => data.date && data.date.toDate() >= startDate) // Añadida verificación de data.date
+                .filter(data => data.date && data.date.toDate() >= startDate)
                 .map(data => ({
                     label: data.date.toDate().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }),
                     value: data.masteredCount
@@ -84,19 +114,60 @@ function StatsDashboard({ user }) {
 
     if (loading) return <div className="p-10 text-center">Cargando estadísticas...</div>;
     
-    // --- CÁLCULOS Y COMPONENTES VISUALES ---
+    // --- LÓGICA Y CONFIGURACIÓN PARA LOS GRÁFICOS ---
 
-    // 1. Variables específicas para el gráfico de EVOLUCIÓN
-    const maxEvolution = Math.max(...stats.dailyData.map(d => d.value), 10); // Valor mínimo de 10 para que el eje no sea muy pequeño
-    const yLabelsEvolution = [0, Math.ceil(maxEvolution / 2), maxEvolution];
+    // 1. Configuración para el nuevo GRÁFICO DE LÍNEA
+    const lineChartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                titleFont: { size: 14 },
+                bodyFont: { size: 12 },
+                padding: 10,
+                cornerRadius: 4,
+            },
+        },
+        scales: {
+            x: {
+                grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                ticks: { color: '#a0aec0' },
+            },
+            y: {
+                beginAtZero: true,
+                grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                ticks: { color: '#a0aec0', stepSize: 5 },
+            },
+        },
+        elements: {
+            line: {
+                tension: 0.3, // Esto hace la línea ligeramente curvada
+            },
+        },
+    };
 
-    // 2. Variables específicas para el gráfico por TIPO
+    const lineChartData = {
+        labels: stats.dailyData.map(d => d.label),
+        datasets: [{
+            label: 'Palabras Dominadas',
+            data: stats.dailyData.map(d => d.value),
+            fill: true, // Rellena el área debajo de la línea
+            borderColor: '#34d399', // Un verde esmeralda
+            backgroundColor: 'rgba(52, 211, 153, 0.2)',
+            pointBackgroundColor: '#34d399',
+            pointHoverBorderColor: '#ffffff',
+            pointHoverBackgroundColor: '#ffffff',
+        }],
+    };
+
+    // 2. Configuración para el GRÁFICO DE BARRAS (sin cambios)
     const maxByType = Math.max(...stats.masteredByType.map(d => d.value), 10);
     const yLabelsByType = [0, Math.ceil(maxByType / 2), maxByType];
     const typeTranslations = { noun: 'Sust.', verb: 'Verbos', adjective: 'Adj.', preposition: 'Prep.', Otros: 'Otros' };
     const typeColors = { noun: '#3b82f6', verb: '#ec4899', adjective: '#f59e0b', preposition: '#22c55e', Otros: '#6b7280' };
 
-    // --- Componentes Reutilizables ---
     const StatCard = ({ title, value, subtext }) => ( <div className="bg-gray-800 p-6 rounded-lg text-center sm:text-left"><h3 className="text-sm font-medium text-gray-400">{title}</h3><p className="text-3xl font-bold mt-2">{value}</p>{subtext && <p className="text-xs text-gray-500 mt-1">{subtext}</p>}</div> );
     const TimeframeButton = ({ days, children }) => ( <button onClick={() => setTimeframe(days)} className={`px-3 py-1 text-xs rounded-full ${timeframe === days ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>{children}</button> );
 
@@ -109,7 +180,7 @@ function StatsDashboard({ user }) {
                 <StatCard title="Dominadas (Hoy)" value={stats.kpis.masteredToday} subtext="Calculado diariamente" />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* ===== GRÁFICO DE EVOLUCIÓN CORREGIDO ===== */}
+                {/* ===== GRÁFICO DE EVOLUCIÓN (AHORA DE LÍNEA) ===== */}
                 <div className="bg-gray-800 p-6 rounded-lg">
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="text-lg font-semibold">Evolución de Palabras Dominadas</h3>
@@ -119,32 +190,18 @@ function StatsDashboard({ user }) {
                             <TimeframeButton days={90}>90 D</TimeframeButton>
                         </div>
                     </div>
-                    {stats.dailyData.length > 0 ? (
-                        <div className="flex h-60 gap-3">
-                            <div className="flex flex-col-reverse justify-between text-xs text-gray-500 pr-2 border-r border-gray-700 text-right">
-                                {yLabelsEvolution.map(label => <span key={`evol-${label}`}>{label}</span>)}
-                            </div>
-                                <div className="flex-1 flex justify-around gap-2 relative">
-                                <div className="absolute top-0 left-0 w-full h-full flex flex-col-reverse justify-between">
-                                    {yLabelsEvolution.map((_, i) => <div key={`grid-${i}`} className="w-full border-t border-gray-700/50"></div>)}
-                                </div>
-                                {stats.dailyData.map((day, i) => (
-                                    <div key={i} className="flex-1 flex flex-col items-center justify-end group z-10" title={`${day.label}: ${day.value} dominadas`}>
-                                        <div 
-                                            className="bg-green-500 group-hover:bg-green-400 rounded-t-sm w-1/2 transition-all duration-300"
-                                            style={{ height: `${(day.value / maxEvolution) * 100}%`, minHeight: '2px' }}>
-                                        </div>
-                                        <span className="text-xs text-gray-500 mt-2">{day.label}</span>
-                                    </div>
-                                ))}
-                            </div>
+                    {stats.dailyData.length > 1 ? (
+                        <div className="relative h-60">
+                            <Line options={lineChartOptions} data={lineChartData} />
                         </div>
                     ) : (
-                        <div className="flex items-center justify-center h-60 text-gray-500"><p>No hay suficientes datos. ¡Sigue jugando!</p></div>
+                        <div className="flex items-center justify-center h-60 text-gray-500">
+                            <p>Se necesitan al menos 2 días de datos para mostrar una evolución.</p>
+                        </div>
                     )}
                 </div>
 
-                {/* ===== GRÁFICO POR TIPO (YA FUNCIONABA BIEN) ===== */}
+                {/* ===== GRÁFICO POR TIPO (sin cambios) ===== */}
                 <div className="bg-gray-800 p-6 rounded-lg">
                     <h3 className="text-lg font-semibold mb-4">Palabras Dominadas por Tipo</h3>
                     {stats.kpis.masteredTotal > 0 ? (
@@ -178,4 +235,5 @@ function StatsDashboard({ user }) {
     );
 }
 
+// Cambiado el nombre de la exportación para que coincida con tu archivo
 export default StatsDashboard;
