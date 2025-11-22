@@ -76,10 +76,20 @@ useEffect(() => {
             baseWords.forEach(word => {
                 playableWords.push(word);
                 if (word.type === 'verb' && word.attributes?.separablePrefixes) {
-                    word.attributes.separablePrefixes.forEach(p => {
-                        playableWords.push({ ...word, id: `${word.id}_${p.prefix}`, german: p.prefix + word.german, spanish: p.meaning, isDerived: true });
-                    });
-                }
+    word.attributes.separablePrefixes.forEach(p => {
+        // CAPA DE SEGURIDAD VISUAL: Forzamos que el prefijo se vea en minúscula al unirse
+        const prefixClean = p.prefix.toLowerCase();
+        const rootClean = word.german; // Como ya es verbo, WordForm lo habrá guardado en minúscula (ej: kaufen)
+        
+        playableWords.push({ 
+            ...word, 
+            id: `${word.id}_${p.prefix}`, 
+            german: prefixClean + rootClean, // einkaufen
+            spanish: p.meaning, 
+            isDerived: true 
+        });
+    });
+}
             });
             
             // Guardamos las palabras en los dos estados
