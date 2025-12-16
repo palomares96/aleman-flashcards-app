@@ -1,67 +1,102 @@
-import { signOut } from "firebase/auth";
-import { auth } from '../firebase.js';
-
 import React, { useState, useEffect } from 'react';
 import Game from './Game.jsx';
-import WordForm from './WordForm.jsx';
-import VocabularyManager from './VocabularyManager.jsx';
-import StatsDashboard from './Statistics.jsx'; // Asegúrate que el archivo se llame así
-import FriendsManager from './FriendsManager.jsx';
 import SentenceMode from './SentenceMode.jsx';
+// Importamos los nuevos contenedores
+import LibrarySection from './LibrarySection.jsx';
+import ProfileSection from './ProfileSection.jsx';
+import Achievements from './Achievements.jsx';
+import TrophyBanner from './TrophyBanner.jsx';
+import { useTrophyNotification } from '../hooks/useGlobalTrophyNotification.js';
 
-// --- Iconos SVG ---
-const GameIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
-const AddIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
-const EditIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>;
-const StatsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>;
-const SwapIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg> );
-const CheckIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg> );
-const XIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg> );
-const FilterIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>;
-const LogoutIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>;
-const UserGroupIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.124-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.124-1.283.356-1.857m0 0a3.001 3.001 0 01-2.702 0M7 16V9m0 0a3 3 0 100-6 3 3 0 000 6z" /></svg>;
-const SentenceIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+// --- Iconos Minimalistas (Estilo iOS) ---
+const GameIcon = ({active}) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} stroke="currentColor" className="w-7 h-7" strokeWidth={active ? 0 : 2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+    </svg>
+);
+const SentenceIcon = ({active}) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} stroke="currentColor" className="w-7 h-7" strokeWidth={active ? 0 : 2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+    </svg>
+);
+const LibraryIcon = ({active}) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} stroke="currentColor" className="w-7 h-7" strokeWidth={active ? 0 : 2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+    </svg>
+);
+const ProfileIcon = ({active}) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} stroke="currentColor" className="w-7 h-7" strokeWidth={active ? 0 : 2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+    </svg>
+);
+const AchievementsIcon = ({active}) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} stroke="currentColor" className="w-7 h-7" strokeWidth={active ? 0 : 2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12a9 9 0 11-18 0 9 9 0 0118 0m-.5-6.5a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
+    </svg>
+);
 
-// =================================================================================
-// COMPONENTE #5: El Layout principal con el menú
-// =================================================================================
 function AppLayout({ user, userProfile }) {
     const [view, setView] = useState('game');
-    const NavLink = ({ viewName, children }) => (<button onClick={() => setView(viewName)} className={`...`}>{children}</button>);
+    const [banner, setBanner] = useState(null);
+    const { subscribe } = useTrophyNotification();
 
-    // Logout function
-    const handleLogout = () => {
-        signOut(auth);
+    // Escuchar eventos globales de trofeos desbloqueados
+    useEffect(() => {
+        const unsubscribe = subscribe((trophy) => {
+            setBanner(trophy);
+            // Auto-cerrar el banner después de 4 segundos
+            const timeout = setTimeout(() => setBanner(null), 4000);
+            return () => clearTimeout(timeout);
+        });
+        
+        return unsubscribe;
+    }, [subscribe]);
+
+    const NavItem = ({ viewName, label, Icon }) => {
+        const isActive = view === viewName;
+        return (
+            <button 
+                onClick={() => setView(viewName)} 
+                className={`flex flex-col items-center justify-center w-full py-2 transition-all duration-300 ${isActive ? 'text-blue-400 scale-105' : 'text-gray-500 hover:text-gray-300'}`}
+            >
+                <div className={`mb-1 transition-transform ${isActive ? '-translate-y-1' : ''}`}>
+                    <Icon active={isActive} />
+                </div>
+                <span className={`text-[10px] font-medium tracking-wide ${isActive ? 'opacity-100' : 'opacity-70'}`}>{label}</span>
+            </button>
+        );
     };
 
     return (
-        <div className="flex flex-col h-screen font-sans text-white bg-gray-900 sm:flex-row">
-            <nav className="sticky bottom-0 w-full flex order-last justify-around p-2 bg-gray-800 sm:relative sm:w-56 sm:p-4 sm:flex-col sm:justify-start sm:order-first gap-2 z-10">
-                <NavLink viewName="game"><GameIcon /> <span className="text-xs sm:text-base">Jugar</span></NavLink>
-                <NavLink viewName="sentenceMode"><SentenceIcon /> <span className="...">Frases</span></NavLink>
-                <NavLink viewName="add"><AddIcon /> <span className="text-xs sm:text-base">Añadir</span></NavLink>
-    <NavLink viewName="manager"><EditIcon /> <span className="text-xs sm:text-base">Gestionar</span></NavLink>
-                <NavLink viewName="stats"><StatsIcon /> <span className="text-xs sm:text-base">Estadísticas</span></NavLink>
-                <NavLink viewName="friends"><UserGroupIcon /> <span>Amigos</span></NavLink>
+        <div className="flex flex-col h-screen font-sans text-white bg-slate-950">
+            {/* Main Content Area */}
+            <main className="flex-1 overflow-y-auto w-full max-w-md mx-auto pt-10 pb-24 px-6 relative z-0">
+                {/* Background decorative blobs */}
+                <div className="fixed top-0 left-0 w-64 h-64 bg-blue-600/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
+                <div className="fixed bottom-0 right-0 w-80 h-80 bg-purple-600/10 rounded-full blur-3xl translate-x-1/3 translate-y-1/3 pointer-events-none"></div>
 
-                {/* --- BOTÓN DE LOGOUT AÑADIDO --- */}
-                <div className="mt-auto"> {/* Pushes logout to the bottom on larger screens */}
-                   <button onClick={handleLogout} className="flex flex-col sm:flex-row items-center justify-center sm:justify-start gap-2 px-4 py-3 rounded-lg w-full text-left hover:bg-red-800/50 text-red-400">
-                       <LogoutIcon />
-                       <span className="text-xs sm:text-base">Salir</span>
-                   </button>
+                <div className="relative z-10 h-full">
+                    {banner && <TrophyBanner trophy={banner} onClose={() => setBanner(null)} />}
+                    {view === 'game' && <Game user={user} onTrophyUnlock={(t) => setBanner(t)} />}
+                    {view === 'sentenceMode' && <SentenceMode user={user} />}
+                    {view === 'library' && <LibrarySection user={user} />}
+                    {view === 'achievements' && <Achievements user={user} onUnlock={(t) => setBanner(t)} />}
+                    {view === 'profile' && <ProfileSection user={user} userProfile={userProfile} />}
+                </div>
+            </main>
+
+            {/* Modern Bottom Navigation (Glassmorphism) */}
+            <nav className="fixed bottom-0 w-full z-50 bg-slate-950/80 backdrop-blur-xl border-t border-white/10 pb-safe pt-2">
+                <div className="flex justify-around items-end max-w-md mx-auto px-2">
+                    <NavItem viewName="game" label="Jugar" Icon={GameIcon} />
+                    <NavItem viewName="sentenceMode" label="Frases" Icon={SentenceIcon} />
+                    <NavItem viewName="library" label="Biblioteca" Icon={LibraryIcon} />
+                    <NavItem viewName="achievements" label="Logros" Icon={AchievementsIcon} />
+                    <NavItem viewName="profile" label="Perfil" Icon={ProfileIcon} />
                 </div>
             </nav>
-         <main className="flex-1 p-4 overflow-y-auto sm:p-8 flex justify-center">
-            {view === 'game' && <Game user={user} />}
-            {view === 'sentenceMode' && <SentenceMode user={user} />}
-            {view === 'add' && <WordForm user={user} />}
-            {view === 'manager' && <VocabularyManager user={user} />}
-            {view === 'stats' && <StatsDashboard user={user} />}
-            {view === 'friends' && <FriendsManager user={user} userProfile={userProfile} />}
-        </main>
-    </div>
-  );
+        </div>
+    );
 }
 
 export default AppLayout;

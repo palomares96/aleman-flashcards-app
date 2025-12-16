@@ -77,7 +77,15 @@ function StatsDashboard({ user }) {
 
                 if (isMastered) {
                     liveMasteredTotal++;
-                    const wordType = wordTypeMap.get(wordId);
+                    // Intentamos resolver el tipo por ID directo; si no existe, intentamos por baseId (antes_del_prefijo)
+                    let wordType = wordTypeMap.get(wordId);
+                    if (!wordType && wordId && wordId.includes('_')) {
+                        const baseId = wordId.split('_')[0];
+                        wordType = wordTypeMap.get(baseId);
+                    }
+                    // Normalizar a minúsculas para comparar con mainTypes
+                    if (wordType) wordType = String(wordType).toLowerCase();
+
                     if (wordType && mainTypes.includes(wordType)) {
                         masteredByTypeCounters[wordType]++;
                     } else {

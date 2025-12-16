@@ -5,7 +5,7 @@ export const MASTERY_CRITERIA = {
 };
 
 export const initialFormData = {
-  german: '', spanish: '', type: 'noun', category: '', difficulty: '1',
+  german: '', spanish: '', type: 'noun', category: 'Otros', difficulty: '1',
   attributes: { 
     gender: '', 
     isRegular: true, 

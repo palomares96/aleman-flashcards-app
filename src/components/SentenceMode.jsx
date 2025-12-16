@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase.js';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, addDoc, serverTimestamp, query, orderBy, limit } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { getApp } from "firebase/app";
 
@@ -202,7 +202,20 @@ function SentenceMode({ user }) {
                 sourceLang,
                 targetLang
             });
-            setEvaluation(result.data); 
+            setEvaluation(result.data);
+            
+            // Guardar el intento de frase en Firestore
+            if (user) {
+                await addDoc(collection(db, `users/${user.uid}/sentenceAttempts`), {
+                    sentence: currentSentence,
+                    userTranslation: userTranslation,
+                    score: result.data.score,
+                    direction,
+                    feedback: result.data.feedback,
+                    betterTranslation: result.data.betterTranslation,
+                    createdAt: serverTimestamp()
+                });
+            }
         } catch (err) {
             console.error(err);
             setError("Error al evaluar.");

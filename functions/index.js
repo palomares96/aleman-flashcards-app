@@ -1,4 +1,5 @@
 // functions/index.js
+// --- DEPLOY V5 - FORCE UPDATE ---
 
 // --- Importaciones ---
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
