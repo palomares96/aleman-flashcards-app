@@ -4,7 +4,7 @@ import { collection, getDocs, doc, getDoc, setDoc, serverTimestamp } from 'fireb
 import { MASTERY_CRITERIA } from '../config.js';
 import { useTrophyNotification } from './useGlobalTrophyNotification.js';
 
-// Categorías de trofeos
+// Categorías de trofeos 33
 const TROPHY_CATEGORIES = [
   {
     id: 'words',
@@ -432,3 +432,6 @@ export function useAchievementCheck(user, onNewTrophy) {
       return [];
     }
   }, [user, onNewTrophy, emitTrophy]);
+
+  return { checkAchievements };
+}
