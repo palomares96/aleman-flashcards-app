@@ -5,7 +5,7 @@ import { MASTERY_CRITERIA } from '../config.js';
 import { useTrophyNotification } from './useGlobalTrophyNotification.js';
 
 // Categorías de trofeos 33
-const TROPHY_CATEGORIES = [
+export const TROPHY_CATEGORIES = [
   {
     id: 'words',
     name: 'Palabras Añadidas',
@@ -68,7 +68,7 @@ const TROPHY_CATEGORIES = [
   }
 ];
 
-const TROPHIES = [
+export const TROPHIES = [
   // === PALABRAS AÑADIDAS ===
   { id: 'first_word', category: 'words', title: 'Primera palabra', desc: 'Añade tu primera palabra al vocabulario', icon: '📝' },
   { id: 'add_10', category: 'words', title: 'Coleccionista: 10', desc: 'Añade 10 palabras', icon: '📚' },
