@@ -433,5 +433,5 @@ export function useAchievementCheck(user, onNewTrophy) {
     }
   }, [user, onNewTrophy, emitTrophy]);
 
-  return { checkAchievements };
+  return checkAchievements;
 }
