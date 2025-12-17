@@ -72,11 +72,26 @@ function Achievements({ user, onUnlock }) {
 
   // VISTA DE CATEGORÍAS
   if (!selectedCategory) {
+    const totalUnlocked = unlocked.length;
+    const totalTrophies = TROPHIES.length;
+
     return (
       <div className="w-full max-w-3xl mx-auto pb-20 px-4">
         <h1 className="text-3xl font-bold mb-2">🏆 Logros</h1>
-        <p className="text-sm text-gray-400 mb-8">Selecciona una categoría para ver los detalles.</p>
+        <p className="text-sm text-gray-400 mb-6">¡Colecciónalos todos!</p>
+
+        {/* Total Progress */}
+        <div className="mb-8 p-4 bg-slate-800 rounded-2xl border border-gray-700 shadow-lg">
+            <div className="flex justify-between items-center mb-2">
+                <p className="text-md font-bold text-yellow-400">Progreso Total</p>
+                <p className="text-lg font-bold text-white">{totalUnlocked} / {totalTrophies}</p>
+            </div>
+            <div className="w-full bg-gray-700 rounded-full h-2.5">
+                <div className="bg-yellow-500 h-2.5 rounded-full" style={{ width: `${(totalUnlocked / totalTrophies) * 100}%` }}></div>
+            </div>
+        </div>
         
+        <p className="text-sm text-gray-400 mb-4">Selecciona una categoría para ver los detalles.</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {TROPHY_CATEGORIES.map(cat => {
             const trophiesInCat = TROPHIES.filter(t => t.category === cat.id);

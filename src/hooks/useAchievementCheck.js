@@ -65,10 +65,24 @@ export const TROPHY_CATEGORIES = [
     name: 'Especiales',
     icon: '✨',
     color: 'purple'
+  },
+  {
+    id: 'filter_master',
+    name: 'Maestro de Filtros',
+    icon: '🎛️',
+    color: 'teal'
   }
 ];
 
 export const TROPHIES = [
+  // === FILTROS (NUEVOS) ===
+  { id: 'sm_tense_explorer', category: 'filter_master', title: 'Viajero del Tiempo', desc: 'Juega una frase en Presente, Pasado (cualquiera) y Futuro.', icon: '⏳' },
+  { id: 'sm_case_explorer', category: 'filter_master', title: 'Declinator', desc: 'Juega una frase usando los casos Acusativo, Dativo y Genitivo.', icon: '📚' },
+  { id: 'sm_structure_explorer', category: 'filter_master', title: 'Arquitecto de Frases', desc: 'Juega usando Hauptsatz, Nebensatz y Relativsatz.', icon: '🏗️' },
+  { id: 'sm_advanced_explorer', category: 'filter_master', title: 'Virtuoso Gramatical', desc: 'Juega usando Konjunktiv II, Imperativo y Voz Pasiva.', icon: '🎶' },
+  { id: 'gm_picky_learner', category: 'filter_master', title: 'Aprendiz Exigente', desc: 'Acierta 20 palabras usando un filtro de dificultad.', icon: '🧐' },
+  { id: 'gm_category_specialist', category: 'filter_master', title: 'Especialista Temático', desc: 'Acierta 20 palabras usando un filtro de categoría.', icon: '🎯' },
+
   // === PALABRAS AÑADIDAS ===
   { id: 'first_word', category: 'words', title: 'Primera palabra', desc: 'Añade tu primera palabra al vocabulario', icon: '📝' },
   { id: 'add_10', category: 'words', title: 'Coleccionista: 10', desc: 'Añade 10 palabras', icon: '📚' },
@@ -148,19 +162,33 @@ export const TROPHIES = [
   { id: 'perfect_game', category: 'perfection', title: 'Juego Impecable', desc: 'Gana una partida completa sin errores', icon: '💯' },
   { id: 'accuracy_90', category: 'perfection', title: 'Precision Master', desc: 'Alcanza 90% de precisión acumulada', icon: '🎯' },
   { id: 'sentences_perfect_5', category: 'perfection', title: 'Traductor Perfecto', desc: 'Consigue 10/10 en 5 frases', icon: '📜' },
+  { id: 'sentences_perfect_15', category: 'perfection', title: 'Orador de Plata', desc: 'Consigue 10/10 en 15 frases', icon: '🥈' },
+  { id: 'sentences_perfect_30', category: 'perfection', title: 'Orador de Oro', desc: 'Consigue 10/10 en 30 frases', icon: '🥇' },
 
   // === COLECCIONISTA ===
   { id: 'noun_master', category: 'collector', title: 'Maestro de Sustantivos', desc: 'Domina 50 sustantivos', icon: '📦' },
   { id: 'verb_master', category: 'collector', title: 'Maestro de Verbos', desc: 'Domina 50 verbos', icon: '⚡' },
   { id: 'adjective_master', category: 'collector', title: 'Maestro de Adjetivos', desc: 'Domina 25 adjetivos', icon: '🎨' },
-  { id: 'type_master', category: 'collector', title: 'Coleccionista Épico', desc: 'Domina al menos 30 palabras de cada tipo', icon: '🏆' },
-  { id: 'word_5000', category: 'collector', title: 'Mega Coleccionista', desc: 'Colecciona un total de 5000 palabras', icon: '📊' },
-
+  { id: 'preposition_master', category: 'collector', title: 'Maestro de Preposiciones', desc: 'Domina 20 preposiciones', icon: '🧭' },
+  { id: 'other_master', category: 'collector', title: 'El Ecléctico', desc: 'Domina 20 palabras de tipo "otro"', icon: '🧩' },
+  { id: 'master_all_nouns', category: 'collector', title: 'El Nominador', desc: 'Domina TODOS los sustantivos de tu mazo', icon: '🏆' },
+  { id: 'master_all_verbs', category: 'collector', title: 'El Conjugador', desc: 'Domina TODOS los verbos de tu mazo', icon: '🏆' },
+  
   // === ESPECIALES ===
   { id: 'prefixes_5', category: 'other', title: 'Prefijador', desc: 'Añade 5 prefijos separables', icon: '⚙️' },
   { id: 'prefixes_50', category: 'other', title: 'Rey de Prefijos', desc: 'Añade 50 prefijos separables', icon: '👑' },
   { id: 'first_month', category: 'other', title: 'Primer Mes', desc: 'Completa tu primer mes en la app', icon: '🎂' },
-  { id: 'trilingual_ambition', category: 'other', title: 'Ambición Trilingüe', desc: 'Crea 3 categorías de palabras personalizadas', icon: '🌍' }
+  { id: 'trilingual_ambition', category: 'other', title: 'Ambición Trilingüe', desc: 'Crea 3 categorías de palabras personalizadas', icon: '🌍' },
+
+  // === MÁS HITOS DE PALABRAS Y RACHAS ===
+  { id: 'words_add_10000', category: 'words', title: 'Archimago del Léxico', desc: 'Añade 10.000 palabras', icon: '🌌' },
+  { id: 'streak_correct_100', category: 'streaks', title: 'Imparable', desc: 'Consigue 100 aciertos seguidos', icon: '🌠' },
+  { id: 'streak_daily_60', category: 'streaks', title: 'Hábito de Hierro', desc: 'Mantén una racha de 60 días jugando', icon: '🦾' },
+  
+  // === MÁS TROFEOS DE FILTROS Y MODO AMIGO ===
+  { id: 'sm_keyword_user', category: 'filter_master', title: 'El Específico', desc: 'Juega 10 frases usando una palabra clave.', icon: '🔑' },
+  { id: 'sm_kitchen_sink', category: 'filter_master', title: 'El Exigente', desc: 'Juega una frase con 5 o más filtros avanzados activos.', icon: '🤯' },
+  { id: 'friend_mode_pro', category: 'friends', title: 'Amigo Fiel', desc: 'Juega 100 cartas del mazo de un amigo.', icon: '🤝' }
 ];
 
 export function useAchievementCheck(user, onNewTrophy) {
@@ -170,17 +198,19 @@ export function useAchievementCheck(user, onNewTrophy) {
     if (!user) return [];
     
     try {
-      const [wordsSnap, progressSnap, friendsSnap, sentencesSnap] = await Promise.all([
+      const [wordsSnap, progressSnap, friendsSnap, sentencesSnap, eventsSnap] = await Promise.all([
         getDocs(collection(db, `users/${user.uid}/words`)),
         getDocs(collection(db, `users/${user.uid}/progress`)),
         getDocs(collection(db, `users/${user.uid}/friends`)),
-        getDocs(collection(db, `users/${user.uid}/sentenceAttempts`))
+        getDocs(collection(db, `users/${user.uid}/sentenceAttempts`)),
+        getDocs(collection(db, `users/${user.uid}/user_events`))
       ]);
 
       const words = wordsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const progress = progressSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const friends = friendsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const sentences = sentencesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const events = eventsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
       let totalPrefixes = 0;
       words.forEach(w => {
@@ -241,26 +271,69 @@ export function useAchievementCheck(user, onNewTrophy) {
       // Filtrar palabras: solo las propias (no importadas) para trofeos de "palabras añadidas"
       const ownWords = words.filter(w => !w.importedFrom);
 
-      console.log('Achievement Check Debug:', {
-        wordsCount: words.length,
-        ownWordsCount: ownWords.length,
-        progressCount: progress.length,
-        friendsCount: friends.length,
-        masteredCount,
-        totalPrefixes,
-        recentDaily: recentDaily.length,
-        longestStreak,
-        sentencesCount: sentences.length,
-        sentenceStreak
-      });
-
       // Cargar logros persistidos desde el documento del usuario
       const userDocRef = doc(db, `users/${user.uid}`);
       const userSnap = await getDoc(userDocRef);
       const persisted = userSnap.exists() ? (userSnap.data().achievements?.unlocked || []) : [];
       const currentUnlocked = new Set(persisted);
 
+      // --- CÁLCULOS EXTRA PARA NUEVOS LOGROS ---
+      const masteredWordsByType = { noun: 0, verb: 0, adjective: 0, preposition: 0, other: 0 };
+      const totalWordsByType = { noun: 0, verb: 0, adjective: 0, preposition: 0, other: 0 };
+      words.forEach(w => {
+          totalWordsByType[w.type]++;
+          const p = progress.find(pr => pr.id === w.id.split('_')[0]);
+          if (p) {
+              const totalPlays = (p.correct || 0) + (p.incorrect || 0);
+              const errorRate = totalPlays > 0 ? (p.incorrect || 0) / totalPlays : 0;
+              const isMastered = (totalPlays >= MASTERY_CRITERIA.MIN_PLAYS && errorRate < MASTERY_CRITERIA.MAX_ERROR_RATE) || (p.correctStreak || 0) >= MASTERY_CRITERIA.STREAK_NEEDED;
+              if (isMastered) {
+                  masteredWordsByType[w.type]++;
+              }
+          }
+      });
+      const friendModePlays = events.filter(e => e.type === 'correct_answer_with_filters' && e.filters?.friendPlay).length;
+
+
       const checks = {
+        // === Filtros (NUEVO) ===
+        sm_tense_explorer: () => {
+            const tensesUsed = new Set(sentences.map(s => s.tense));
+            return tensesUsed.has('Präsens') && (tensesUsed.has('Präteritum') || tensesUsed.has('Perfekt')) && tensesUsed.has('Futur I');
+        },
+        sm_case_explorer: () => {
+            const casesUsed = new Set(sentences.map(s => s.grammaticalCase));
+            return casesUsed.has('acusativo') && casesUsed.has('dativo') && casesUsed.has('genitivo');
+        },
+        sm_structure_explorer: () => {
+            const structuresUsed = new Set(sentences.map(s => s.sentenceStructure));
+            return structuresUsed.has('Hauptsatz') && structuresUsed.has('Nebensatz') && structuresUsed.has('Relativsatz');
+        },
+        sm_advanced_explorer: () => {
+            const moodsUsed = new Set(sentences.map(s => s.verbMood));
+            const voicesUsed = new Set(sentences.map(s => s.voice));
+            return moodsUsed.has('Konjunktiv II') && moodsUsed.has('Imperativ') && voicesUsed.has('Passiv');
+        },
+        gm_picky_learner: () => {
+            const count = events.filter(e => e.type === 'correct_answer_with_filters' && e.filters?.difficulty).length;
+            return count >= 20;
+        },
+        gm_category_specialist: () => {
+            const count = events.filter(e => e.type === 'correct_answer_with_filters' && e.filters?.categoryId).length;
+            return count >= 20;
+        },
+        sm_keyword_user: () => sentences.filter(s => s.keyword && s.keyword.trim() !== '').length >= 10,
+        sm_kitchen_sink: () => sentences.some(s => {
+            let activeFilters = 0;
+            if (s.tense !== 'any') activeFilters++;
+            if (s.grammaticalCase !== 'any') activeFilters++;
+            if (s.sentenceStructure !== 'any') activeFilters++;
+            if (s.verbMood !== 'any') activeFilters++;
+            if (s.voice !== 'any') activeFilters++;
+            return activeFilters >= 5;
+        }),
+        friend_mode_pro: () => friendModePlays >= 100,
+
         // Palabras añadidas (sin importadas)
         first_word: () => ownWords.length >= 1,
         add_10: () => ownWords.length >= 10,
@@ -272,6 +345,7 @@ export function useAchievementCheck(user, onNewTrophy) {
         bibliotecario_6: () => ownWords.length >= 1500,
         bibliotecario_7: () => ownWords.length >= 2000,
         wortmeister: () => ownWords.length >= 2500,
+        words_add_10000: () => ownWords.length >= 10000,
         
         // Maestría
         first_master: () => masteredCount >= 1,
@@ -291,14 +365,16 @@ export function useAchievementCheck(user, onNewTrophy) {
         daily_7: () => recentDaily.length >= 7,
         daily_14: () => recentDaily.length >= 14,
         daily_30: () => recentDaily.length >= 30,
-        
+        streak_daily_60: () => longestStreak >= 60,
+
         // Rachas de aciertos
         streak_5: () => progress.some(p => (p.correctStreak || 0) >= 5),
         streak_10: () => progress.some(p => (p.correctStreak || 0) >= 10),
         streak_25: () => progress.some(p => (p.correctStreak || 0) >= 25),
         streak_50: () => progress.some(p => (p.correctStreak || 0) >= 50),
         streak_60: () => progress.some(p => (p.correctStreak || 0) >= 60),
-        
+        streak_correct_100: () => progress.some(p => (p.correctStreak || 0) >= 100),
+
         // Amigos
         friend_1: () => friends.length >= 1,
         friend_5: () => friends.length >= 5,
@@ -323,77 +399,45 @@ export function useAchievementCheck(user, onNewTrophy) {
         bibliotecario_maestro: () => words.length >= 5000,
         
         // Explorador - Aciertos y palabras jugadas
-        correct_50: () => {
-          const totalCorrect = progress.reduce((sum, p) => sum + (p.correct || 0), 0);
-          return totalCorrect >= 50;
-        },
-        correct_100: () => {
-          const totalCorrect = progress.reduce((sum, p) => sum + (p.correct || 0), 0);
-          return totalCorrect >= 100;
-        },
-        correct_500: () => {
-          const totalCorrect = progress.reduce((sum, p) => sum + (p.correct || 0), 0);
-          return totalCorrect >= 500;
-        },
-        correct_1000: () => {
-          const totalCorrect = progress.reduce((sum, p) => sum + (p.correct || 0), 0);
-          return totalCorrect >= 1000;
-        },
-        played_50: () => {
-          const totalPlayed = progress.reduce((sum, p) => sum + ((p.correct || 0) + (p.incorrect || 0)), 0);
-          return totalPlayed >= 50;
-        },
-        played_200: () => {
-          const totalPlayed = progress.reduce((sum, p) => sum + ((p.correct || 0) + (p.incorrect || 0)), 0);
-          return totalPlayed >= 200;
-        },
+        correct_50: () => progress.reduce((sum, p) => sum + (p.correct || 0), 0) >= 50,
+        correct_100: () => progress.reduce((sum, p) => sum + (p.correct || 0), 0) >= 100,
+        correct_500: () => progress.reduce((sum, p) => sum + (p.correct || 0), 0) >= 500,
+        correct_1000: () => progress.reduce((sum, p) => sum + (p.correct || 0), 0) >= 1000,
+        played_50: () => progress.reduce((sum, p) => sum + ((p.correct || 0) + (p.incorrect || 0)), 0) >= 50,
+        played_200: () => progress.reduce((sum, p) => sum + ((p.correct || 0) + (p.incorrect || 0)), 0) >= 200,
         sentence_scholar: () => sentences.length >= 50,
-        versatile_learner: () => true,
+        versatile_learner: () => true, // Placeholder
         
         // Dedicación
-        day_3: () => recentDaily.length >= 3 || true,
-        day_10: () => recentDaily.length >= 10 || true,
-        day_30: () => recentDaily.length >= 30 || true,
-        day_100: () => recentDaily.length >= 100 || true,
+        day_3: () => allDailyStats.length >= 3,
+        day_10: () => allDailyStats.length >= 10,
+        day_30: () => allDailyStats.length >= 30,
+        day_100: () => allDailyStats.length >= 100,
         marathon: () => longestStreak >= 100,
         
         // Perfeccionista
-        perfect_start: () => true,
-        perfect_game: () => true,
+        perfect_start: () => true, // Placeholder
+        perfect_game: () => true, // Placeholder
         accuracy_90: () => {
           const totalPlays = progress.reduce((sum, p) => sum + ((p.correct || 0) + (p.incorrect || 0)), 0);
           const totalCorrect = progress.reduce((sum, p) => sum + (p.correct || 0), 0);
-          return totalPlays > 0 && (totalCorrect / totalPlays) >= 0.9;
+          return totalPlays > 20 && (totalCorrect / totalPlays) >= 0.9; // Min 20 jugadas
         },
         sentences_perfect_5: () => sentences.filter(s => (s.score || 0) === 10).length >= 5,
-        
+        sentences_perfect_15: () => sentences.filter(s => (s.score || 0) === 10).length >= 15,
+        sentences_perfect_30: () => sentences.filter(s => (s.score || 0) === 10).length >= 30,
+
         // Coleccionista
-        noun_master: () => {
-          const nounProgress = progress.filter(p => {
-            const word = words.find(w => w.id === p.id || w.id.split('_')[0] === p.id);
-            return word && word.type === 'noun';
-          });
-          return nounProgress.filter(p => (p.correctStreak || 0) >= MASTERY_CRITERIA.STREAK_NEEDED || ((p.correct || 0) >= MASTERY_CRITERIA.MIN_PLAYS && ((p.incorrect || 0) / ((p.correct || 0) + (p.incorrect || 0))) < MASTERY_CRITERIA.MAX_ERROR_RATE)).length >= 50;
-        },
-        verb_master: () => {
-          const verbProgress = progress.filter(p => {
-            const word = words.find(w => w.id === p.id || w.id.split('_')[0] === p.id);
-            return word && word.type === 'verb';
-          });
-          return verbProgress.filter(p => (p.correctStreak || 0) >= MASTERY_CRITERIA.STREAK_NEEDED || ((p.correct || 0) >= MASTERY_CRITERIA.MIN_PLAYS && ((p.incorrect || 0) / ((p.correct || 0) + (p.incorrect || 0))) < MASTERY_CRITERIA.MAX_ERROR_RATE)).length >= 50;
-        },
-        adjective_master: () => {
-          const adjectiveProgress = progress.filter(p => {
-            const word = words.find(w => w.id === p.id || w.id.split('_')[0] === p.id);
-            return word && word.type === 'adjective';
-          });
-          return adjectiveProgress.filter(p => (p.correctStreak || 0) >= MASTERY_CRITERIA.STREAK_NEEDED || ((p.correct || 0) >= MASTERY_CRITERIA.MIN_PLAYS && ((p.incorrect || 0) / ((p.correct || 0) + (p.incorrect || 0))) < MASTERY_CRITERIA.MAX_ERROR_RATE)).length >= 25;
-        },
-        type_master: () => masteredCount >= 120,
-        word_5000: () => words.length >= 5000,
+        noun_master: () => masteredWordsByType.noun >= 50,
+        verb_master: () => masteredWordsByType.verb >= 50,
+        adjective_master: () => masteredWordsByType.adjective >= 25,
+        preposition_master: () => masteredWordsByType.preposition >= 20,
+        other_master: () => masteredWordsByType.other >= 20,
+        master_all_nouns: () => totalWordsByType.noun > 0 && masteredWordsByType.noun === totalWordsByType.noun,
+        master_all_verbs: () => totalWordsByType.verb > 0 && masteredWordsByType.verb === totalWordsByType.verb,
         
         // Especiales
-        first_month: () => recentDaily.length >= 30,
+        first_month: () => allDailyStats.length >= 30,
         trilingual_ambition: () => true // Placeholder
       };
 

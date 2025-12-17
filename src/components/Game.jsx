@@ -346,6 +346,20 @@ function Game({ user, onTrophyUnlock }) {
         if (answeredCorrectly) {
           dataToUpdate.correct = increment(1);
           dataToUpdate.correctStreak = increment(1);
+
+          // Si hay filtros activos, registrar el evento para logros
+          if (filters.difficulty || filters.categoryId) {
+            const eventsRef = collection(db, `users/${user.uid}/user_events`);
+            addDoc(eventsRef, {
+                type: 'correct_answer_with_filters',
+                filters: {
+                    difficulty: filters.difficulty || null,
+                    categoryId: filters.categoryId || null,
+                },
+                timestamp: serverTimestamp()
+            });
+          }
+
         } else {
           dataToUpdate.incorrect = increment(1);
           dataToUpdate.correctStreak = 0;

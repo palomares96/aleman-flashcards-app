@@ -77,17 +77,51 @@ function SentenceMode({ user }) {
     const [allWords, setAllWords] = useState([]);
     const [categories, setCategories] = useState([]);
     const [direction, setDirection] = useState('de-es');
-    const [wordCounts, setWordCounts] = useState({ noun: 1, verb: 1, adjective: 1, preposition: 0 });
+    const [wordCounts, setWordCounts] = useState({ noun: 1, verb: 1, adjective: 1, preposition: 0, other: 0 });
     const [filters, setFilters] = useState({ categoryId: '', difficulty: '', performance: '' });
     const [isConfigOpen, setIsConfigOpen] = useState(false);
 
+        // Nuevos estados para filtros gramaticales
+
+        const [tense, setTense] = useState('any'); // Opciones: any, presente, preterito, perfecto, futuro
+
+        const [grammaticalCase, setGrammaticalCase] = useState('any'); // Opciones: any, acusativo, dativo
+
+        const [sentenceStructure, setSentenceStructure] = useState('any');
+
+        const [verbMood, setVerbMood] = useState('any');
+
+        const [voice, setVoice] = useState('any');
+
+        const [keyword, setKeyword] = useState('');
+
+    
+
+        const [pendingSettings, setPendingSettings] = useState(null);
+
     const [currentSentence, setCurrentSentence] = useState('');
+    const [idealTranslation, setIdealTranslation] = useState('');
     const [selectedWordsList, setSelectedWordsList] = useState([]);
     const [userTranslation, setUserTranslation] = useState('');
     const [evaluation, setEvaluation] = useState(null); // { score: 8, feedback: "...", betterTranslation: "..." }
     const [loading, setLoading] = useState(false);
     const [evaluating, setEvaluating] = useState(false);
     const [error, setError] = useState('');
+
+    const openConfig = () => {
+        setPendingSettings({
+            direction,
+            filters,
+            wordCounts,
+            tense,
+            grammaticalCase,
+            sentenceStructure,
+            verbMood,
+            voice,
+            keyword,
+        });
+        setIsConfigOpen(true);
+    };
 
     useEffect(() => {
         const fetchData = async () => {
@@ -157,6 +191,7 @@ function SentenceMode({ user }) {
         pickRandom('verb', wordCounts.verb);
         pickRandom('adjective', wordCounts.adjective);
         pickRandom('preposition', wordCounts.preposition);
+        pickRandom('other', wordCounts.other);
 
         if (selected.length === 0) {
             setError("No hay suficientes palabras con estos filtros.");
@@ -169,6 +204,7 @@ function SentenceMode({ user }) {
         const targetGenLang = direction === 'de-es' ? 'DE' : 'ES';
         const wordsPayload = selected.map(w => ({
             term: targetGenLang === 'DE' ? w.german : w.spanish,
+            translation: targetGenLang === 'DE' ? w.spanish : w.german, // <-- AÑADIDO
             type: w.type,
             gender: w.attributes?.gender || null
         }));
@@ -176,11 +212,24 @@ function SentenceMode({ user }) {
         try {
             const functions = getFunctions(getApp(), "europe-west1");
             const generateFunc = httpsCallable(functions, 'generateSentence');
-            const result = await generateFunc({ words: wordsPayload, targetLang: targetGenLang });
+            const result = await generateFunc({ 
+                words: wordsPayload, 
+                targetLang: targetGenLang,
+                tense: tense,
+                grammaticalCase: grammaticalCase,
+                sentenceStructure: sentenceStructure,
+                verbMood: verbMood,
+                voice: voice,
+                keyword: keyword,
+            });
+            
+            // La función ahora devuelve un objeto JSON
             setCurrentSentence(result.data.sentence);
+            setIdealTranslation(result.data.idealTranslation);
+
         } catch (err) {
             console.error(err);
-            setError("Error conectando con la IA.");
+            setError(err.message || "Error conectando con la IA.");
         } finally {
             setLoading(false);
         }
@@ -199,6 +248,7 @@ function SentenceMode({ user }) {
             const result = await evalFunc({
                 originalSentence: currentSentence,
                 userTranslation: userTranslation,
+                idealTranslation: idealTranslation, // Pasamos la traducción ideal
                 sourceLang,
                 targetLang
             });
@@ -213,7 +263,14 @@ function SentenceMode({ user }) {
                     direction,
                     feedback: result.data.feedback,
                     betterTranslation: result.data.betterTranslation,
-                    createdAt: serverTimestamp()
+                    createdAt: serverTimestamp(),
+                    // Guardar los filtros usados para los logros
+                    tense,
+                    grammaticalCase,
+                    sentenceStructure,
+                    verbMood,
+                    voice,
+                    keyword,
                 });
             }
         } catch (err) {
@@ -224,16 +281,40 @@ function SentenceMode({ user }) {
         }
     };
 
-    const Counter = ({ label, field }) => (
-        <div className="flex items-center justify-between mb-2">
-            <span className="text-gray-400 text-sm">{label}</span>
-            <div className="flex items-center gap-2 bg-gray-700 rounded px-2">
-                <button onClick={() => setWordCounts(p => ({...p, [field]: Math.max(0, p[field]-1)}))} className="text-red-400 font-bold hover:bg-gray-600 px-2">-</button>
-                <span className="w-4 text-center text-sm font-mono">{wordCounts[field]}</span>
-                <button onClick={() => setWordCounts(p => ({...p, [field]: Math.min(3, p[field]+1)}))} className="text-green-400 font-bold hover:bg-gray-600 px-2">+</button>
+    const saveSettings = () => {
+        setDirection(pendingSettings.direction);
+        setFilters(pendingSettings.filters);
+        setWordCounts(pendingSettings.wordCounts);
+        setTense(pendingSettings.tense);
+        setGrammaticalCase(pendingSettings.grammaticalCase);
+        setSentenceStructure(pendingSettings.sentenceStructure);
+        setVerbMood(pendingSettings.verbMood);
+        setVoice(pendingSettings.voice);
+        setKeyword(pendingSettings.keyword);
+        setIsConfigOpen(false);
+        setPendingSettings(null);
+    };
+
+    const Counter = ({ isPending, label, field }) => {
+        const counts = isPending ? pendingSettings.wordCounts : wordCounts;
+        const setCounts = (updater) => {
+            setPendingSettings(prev => ({
+                ...prev,
+                wordCounts: updater(prev.wordCounts)
+            }));
+        };
+
+        return (
+            <div className="flex items-center justify-between mb-2">
+                <span className="text-gray-400 text-sm">{label}</span>
+                <div className="flex items-center gap-2 bg-gray-700 rounded px-2">
+                    <button onClick={() => setCounts(p => ({...p, [field]: Math.max(0, p[field]-1)}))} className="text-red-400 font-bold hover:bg-gray-600 px-2">-</button>
+                    <span className="w-4 text-center text-sm font-mono">{counts[field]}</span>
+                    <button onClick={() => setCounts(p => ({...p, [field]: Math.min(3, p[field]+1)}))} className="text-green-400 font-bold hover:bg-gray-600 px-2">+</button>
+                </div>
             </div>
-        </div>
-    );
+        );
+    };
 
     // Variables de estilo calculadas para la evaluación
     const scoreStyle = evaluation ? getScoreColor(evaluation.score) : {};
@@ -242,48 +323,117 @@ function SentenceMode({ user }) {
         <div className="w-full max-w-3xl mx-auto pb-20">
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-3xl font-bold text-gray-300">Modo Frase</h1>
-                <button onClick={() => setIsConfigOpen(!isConfigOpen)} className={`p-2 rounded-lg transition-colors ${isConfigOpen ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400'}`}><SettingsIcon /></button>
+                <button onClick={openConfig} className={`p-2 rounded-lg transition-colors ${isConfigOpen ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-700'}`}><SettingsIcon /></button>
             </div>
 
-            {isConfigOpen && (
-                <div className="bg-gray-800 p-5 rounded-xl mb-6 border border-gray-700 shadow-lg">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {isConfigOpen && pendingSettings && (
+                <div className="bg-gray-800 p-5 rounded-xl mb-6 border border-gray-700 shadow-lg animate-fade-in-down">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-6">
+                        {/* --- COLUMNA JUEGO --- */}
                         <div>
                             <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Juego</h4>
                             <div className="flex gap-2 mb-4">
-                                <button onClick={() => setDirection('de-es')} className={`flex-1 py-2 text-sm rounded-lg ${direction === 'de-es' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>🇩🇪 → 🇪🇸</button>
-                                <button onClick={() => setDirection('es-de')} className={`flex-1 py-2 text-sm rounded-lg ${direction === 'es-de' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>🇪🇸 → 🇩🇪</button>
+                                <button onClick={() => setPendingSettings(p => ({...p, direction: 'de-es'}))} className={`flex-1 py-2 text-sm rounded-lg ${pendingSettings.direction === 'de-es' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>🇩🇪 → 🇪🇸</button>
+                                <button onClick={() => setPendingSettings(p => ({...p, direction: 'es-de'}))} className={`flex-1 py-2 text-sm rounded-lg ${pendingSettings.direction === 'es-de' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>🇪🇸 → 🇩🇪</button>
                             </div>
                             <div className="space-y-3">
-                                <select value={filters.difficulty} onChange={e => setFilters({...filters, difficulty: e.target.value})} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300"><option value="">Cualquier Nivel</option>{[1,2,3,4,5].map(n => <option key={n} value={n}>Nivel {n}</option>)}</select>
-                                <select value={filters.categoryId} onChange={e => setFilters({...filters, categoryId: e.target.value})} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300"><option value="">Cualquier Categoría</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name_es}</option>)}</select>
+                                <select value={pendingSettings.filters.difficulty} onChange={e => setPendingSettings(p => ({...p, filters: {...p.filters, difficulty: e.target.value}}))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300"><option value="">Cualquier Nivel</option>{[1,2,3,4,5].map(n => <option key={n} value={n}>Nivel {n}</option>)}</select>
+                                <select value={pendingSettings.filters.categoryId} onChange={e => setPendingSettings(p => ({...p, filters: {...p.filters, categoryId: e.target.value}}))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300"><option value="">Cualquier Categoría</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name_es}</option>)}</select>
                             </div>
                         </div>
-                        <div><h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Estructura</h4><Counter label="Sustantivos" field="noun" /><Counter label="Verbos" field="verb" /><Counter label="Adjetivos" field="adjective" /><Counter label="Preposiciones" field="preposition" /></div>
+                        {/* --- COLUMNA GRAMÁTICA --- */}
+                        <div>
+                            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Gramática</h4>
+                            <div className="space-y-3">
+                                <select value={pendingSettings.tense} onChange={e => setPendingSettings(p => ({...p, tense: e.target.value}))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300">
+                                    <option value="any">Cualquier Tiempo</option>
+                                    <option value="Präsens">Presente</option>
+                                    <option value="Präteritum">Pasado (Präteritum)</option>
+                                    <option value="Perfekt">Pasado (Perfekt)</option>
+                                    <option value="Plusquamperfekt">Pluscuamperfecto</option>
+                                    <option value="Futur I">Futuro I</option>
+                                </select>
+                                <select value={pendingSettings.grammaticalCase} onChange={e => setPendingSettings(p => ({...p, grammaticalCase: e.target.value}))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300">
+                                    <option value="any">Cualquier Caso</option>
+                                    <option value="acusativo">Acusativo</option>
+                                    <option value="dativo">Dativo</option>
+                                    <option value="genitivo">Genitivo</option>
+                                </select>
+                                 <select value={pendingSettings.sentenceStructure} onChange={e => setPendingSettings(p => ({...p, sentenceStructure: e.target.value}))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300">
+                                    <option value="any">Cualquier Estructura</option>
+                                    <option value="Hauptsatz">Solo Oración Principal</option>
+                                    <option value="Nebensatz">Con Oración Subordinada</option>
+                                    <option value="Relativsatz">Con Frase de Relativo</option>
+                                </select>
+                            </div>
+                        </div>
+                        {/* --- COLUMNA AVANZADO --- */}
+                        <div>
+                            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Avanzado</h4>
+                            <div className="mb-4">
+                                <Counter isPending label="Sustantivos" field="noun" />
+                                <Counter isPending label="Verbos" field="verb" />
+                                <Counter isPending label="Adjetivos" field="adjective" />
+                                <Counter isPending label="Preposiciones" field="preposition" />
+                                <Counter isPending label="Otros" field="other" />
+                            </div>
+                            <div className="space-y-3 border-t border-gray-700 pt-4">
+                                <select value={pendingSettings.verbMood} onChange={e => setPendingSettings(p => ({...p, verbMood: e.target.value}))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300">
+                                    <option value="any">Cualquier Modo</option>
+                                    <option value="Konjunktiv II">Konjunktiv II</option>
+                                    <option value="Imperativ">Imperativo</option>
+                                </select>
+                                <select value={pendingSettings.voice} onChange={e => setPendingSettings(p => ({...p, voice: e.target.value}))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300">
+                                    <option value="any">Cualquier Voz</option>
+                                    <option value="Passiv">Voz Pasiva</option>
+                                </select>
+                                <input 
+                                    type="text"
+                                    placeholder="Forzar palabra clave..."
+                                    value={pendingSettings.keyword}
+                                    onChange={e => setPendingSettings(p => ({...p, keyword: e.target.value}))}
+                                    className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300 placeholder-gray-500"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                     {/* --- BOTONES DE ACCIÓN --- */}
+                    <div className="flex justify-end gap-4 mt-6 border-t border-gray-700 pt-4">
+                        <button onClick={() => setIsConfigOpen(false)} className="px-6 py-2 text-sm font-bold text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors">Cancelar</button>
+                        <button onClick={saveSettings} className="px-6 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors">Guardar Cambios</button>
                     </div>
                 </div>
             )}
 
             <div className="bg-gray-800 rounded-2xl shadow-xl overflow-hidden border border-gray-700">
                 
-                {/* --- PISTAS SUPERIORES (Consistentes) --- */}
-                {selectedWordsList.length > 0 && (
-                    <div className="bg-gray-900/50 p-4 border-b border-gray-700">
-                        <p className="text-xs text-gray-500 mb-3 uppercase tracking-widest text-center">Palabras a utilizar</p>
-                        <div className="flex flex-wrap justify-center gap-2">
-                            {selectedWordsList.map((w, i) => {
-                                const style = getWordStyle(w.type, w.attributes?.gender);
-                                return (
-                                    <span key={i} className={`px-3 py-1 text-sm font-medium rounded-full border-b-2 ${style}`}>
-                                        {direction === 'de-es' ? w.german : w.spanish}
-                                    </span>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
+                {/* --- CONTADORES DE PALABRAS (VISIBLES FUERA DE AJUSTES) --- */}
+                <div className="bg-gray-900/30 p-3 border-b border-gray-700 flex flex-wrap justify-center gap-x-6 gap-y-1 text-sm">
+                    <span className="text-gray-400">Palabras:</span>
+                    <span className="text-blue-300 font-semibold">Sust: {wordCounts.noun}</span>
+                    <span className="text-orange-300 font-semibold">Verb: {wordCounts.verb}</span>
+                    <span className="text-purple-300 font-semibold">Adj: {wordCounts.adjective}</span>
+                    <span className="text-teal-300 font-semibold">Prep: {wordCounts.preposition}</span>
+                </div>
 
                 <div className="p-8 bg-gradient-to-b from-gray-800 to-gray-900 min-h-[180px] flex flex-col justify-center items-center text-center">
+                    {/* --- Palabras seleccionadas (NUEVO) --- */}
+                    {selectedWordsList.length > 0 && !loading && (
+                        <div className="mb-6 w-full animate-fade-in">
+                            <p className="text-xs text-gray-500 mb-2 uppercase tracking-widest">Palabras a utilizar</p>
+                            <div className="flex flex-wrap justify-center gap-2">
+                                {selectedWordsList.map((w, i) => {
+                                    const style = getWordStyle(w.type, w.attributes?.gender);
+                                    return (
+                                        <span key={i} className={`px-3 py-1 text-sm font-medium rounded-full border-b-2 ${style}`}>
+                                            {direction === 'de-es' ? w.german : w.spanish}
+                                        </span>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
                     {loading ? <div className="flex flex-col items-center text-blue-400 animate-pulse"><SpinnerIcon /><span className="mt-2 text-sm">Creando frase...</span></div> : 
                      currentSentence ? <div className="w-full"><p className="text-xs font-bold text-gray-500 mb-4 uppercase tracking-widest">Traduce</p><SentenceRenderer sentence={currentSentence} /></div> : 
                      <div className="text-gray-500 italic">Configura y pulsa generar.</div>}

@@ -46,62 +46,124 @@ const generativeModel = vertex_ai.getGenerativeModel({
 });
 
 // =================================================================================
-// --- 1. Cloud Function: Generar Frase (V3 - Gramaticalmente Estricta) ---
+// --- 1. Cloud Function: Generar Frase (V4 - Contexto y Traducción) ---
 // =================================================================================
 exports.generateSentence = onCall(async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "Auth required.");
     
-    const { words, targetLang } = request.data; 
-    // words es ahora: [{ term: 'nutzen', type: 'verb', gender: '...' }, ...]
+    // Desestructuramos todos los nuevos filtros
+    const { 
+        words, targetLang, tense, grammaticalCase, 
+        sentenceStructure, verbMood, voice, keyword 
+    } = request.data;
 
     if (!words || words.length === 0) {
         throw new HttpsError("invalid-argument", "Faltan palabras.");
     }
 
     const langName = targetLang === 'DE' ? 'Alemán' : 'Español';
+    const targetTranslationLang = targetLang === 'DE' ? 'Español' : 'Alemán';
     
-    // Construimos una lista detallada para que la IA no se confunda de tipo
-    const wordsDetails = words.map(w => 
-        `"${w.term}" (debes usarlo como: ${w.type || 'palabra genérica'})`
+    let wordsDetails = words.map(w => 
+        `"${w.term}" (significado deseado: "${w.translation}", tipo: ${w.type || 'palabra'})`
     ).join(", ");
 
+    // Añadimos la palabra clave si existe
+    if (keyword && keyword.trim() !== '') {
+        wordsDetails += `, y también la palabra "${keyword.trim()}"`;
+    }
+
+    // --- CONSTRUCCIÓN DE REGLAS DINÁMICAS ---
+    let grammarRules = `
+        1.  CONJUGA los verbos correctamente. No los dejes en infinitivo.
+        2.  CORRIGE errores ortográficos obvios en las palabras de entrada.
+        3.  Respeta declinaciones y el orden de la frase (TEKAMOLO si aplica).
+    `;
+
+    let ruleCounter = 4;
+    if (targetLang === 'DE') {
+        if (tense && tense !== 'any') {
+            grammarRules += `\n        ${ruleCounter++}.  REQUISITO DE TIEMPO VERBAL: La frase DEBE estar en "${tense}".`;
+        }
+        if (grammaticalCase && grammaticalCase !== 'any') {
+            grammarRules += `\n        ${ruleCounter++}.  REQUISITO DE CASO: La frase DEBE contener un elemento claro en caso "${grammaticalCase}".`;
+        }
+        if (sentenceStructure && sentenceStructure !== 'any') {
+            grammarRules += `\n        ${ruleCounter++}.  REQUISITO DE ESTRUCTURA: La frase DEBE ser de tipo "${sentenceStructure}".`;
+        }
+        if (verbMood && verbMood !== 'any') {
+            grammarRules += `\n        ${ruleCounter++}.  REQUISITO DE MODO VERBAL: La frase DEBE usar el modo "${verbMood}".`;
+        }
+        if (voice && voice !== 'any') {
+            grammarRules += `\n        ${ruleCounter++}.  REQUISITO DE VOZ: La frase DEBE estar en "${voice}".`;
+        }
+    }
+
     const prompt = `
-        Eres un experto lingüista y profesor de ${langName}.
+        Eres un profesor de ${langName} experto en crear material de estudio para niveles A2/B1.
         
         TAREA:
-        Genera una frase gramaticalmente PERFECTA de nivel A2 en ${langName}.
-        
+        1.  Genera una frase gramaticalmente PERFECTA en ${langName} que cumpla TODAS las reglas.
+        2.  Traduce esa misma frase de forma ideal y natural al ${targetTranslationLang}.
+
+        REGLA DE ORO:
+        La frase generada debe ser simple, clara y de longitud adecuada para un nivel A2. Evita estructuras demasiado complejas o frases muy largas, incluso si se usan filtros avanzados. Queremos frases útiles para aprender, no literatura compleja.
+
         REQUISITOS DE LAS PALABRAS INPUT:
-        Debes integrar obligatoriamente estas palabras en la frase:
-        ${wordsDetails}
+        -   Debes integrar obligatoriamente estas palabras: ${wordsDetails}.
+        -   El significado de la palabra en la frase DEBE corresponder al "significado deseado".
 
-        REGLAS DE ORO (Gramática):
-        1. Si la palabra es un VERBO, debes CONJUGARLO correctamente como verbo. NO lo uses como adjetivo o sustantivo. (Ej: Si la palabra es "nutzen", di "Ich nutze es", NO digas "es ist nutzen").
-        2. Si la palabra tiene un error ortográfico evidente (typo), CORRÍGELO en la frase generada (Ej: "Knöckel" -> "Knöchel").
-        3. Respeta los casos y declinaciones.
+        REGLAS DE GRAMÁTICA (${langName}):
+        ${grammarRules}
         
-        REGLAS DE SALIDA (Etiquetado):
-        Envuelve las palabras obligatorias usadas con estas etiquetas EXACTAS:
-        - Sustantivos: [noun-m|Palabra], [noun-f|Palabra], [noun-n|Palabra] (o [noun-x|...] si no aplica género)
-        - Verbos: [verb|Palabra] (La forma conjugada)
-        - Adjetivos: [adj|Palabra]
-        - Preposiciones: [prep|Palabra]
-
-        Solo devuelve la frase etiquetada final. Nada más.
+        REGLAS DE ETIQUETADO EN LA FRASE GENERADA:
+        -   Envuelve las palabras obligatorias usadas en la frase en ${langName} con estas etiquetas:
+            -   Sustantivos: [noun-m|Palabra], [noun-f|Palabra], [noun-n|Palabra]
+            -   Verbos: [verb|Palabra] (la forma conjugada)
+            -   Adjetivos: [adj|Palabra]
+            -   Preposiciones: [prep|Palabra]
+            -   Otros: [word|Palabra]
+        
+        FORMATO DE SALIDA (MUY IMPORTANTE):
+        Tu respuesta DEBE SER ÚNICAMENTE el objeto JSON, sin ningún texto introductorio, explicaciones o marcadores como \`\`\`json. NADA MÁS.
+        
+        Ejemplo de respuesta válida:
+        {
+          "sentence": "Ich gehe zum [noun-m|Bahnhof].",
+          "idealTranslation": "Voy a la estación de tren."
+        }
     `;
 
     try {
-        const result = await generativeModel.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
+        const result = await generativeModel.generateContent({ 
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generation_config: { response_mime_type: "application/json" }
+        });
         const response = await result.response;
-        // Limpiamos posibles caracteres extra
-        let sentence = response.candidates[0].content.parts[0].text.trim();
-        // Eliminar comillas si la IA las pone
-        sentence = sentence.replace(/^"|"$/g, '');
         
-        return { sentence: sentence };
+        if (!response.candidates || response.candidates.length === 0) {
+            console.error("Error en generateSentence: No se han devuelto candidatos desde el modelo. Razón:", response.promptFeedback);
+            throw new HttpsError("internal", "La IA no ha podido generar una respuesta. Esto puede ser debido a los filtros de seguridad internos.");
+        }
+
+        const jsonText = response.candidates[0].content.parts[0].text.trim();
+        
+        try {
+            const jsonResponse = JSON.parse(jsonText.replace(/```json|```/g, ''));
+            return jsonResponse;
+        } catch (jsonError) {
+            console.error("Error al parsear el JSON de la IA:", jsonError);
+            console.error("Texto problemático recibido de la IA:", jsonText);
+            throw new HttpsError("internal", "La IA ha devuelto una respuesta con un formato inesperado y no se ha podido procesar.");
+        }
+
     } catch (error) {
-        console.error("Error en generateSentence:", error);
-        throw new HttpsError("internal", "Error al generar la frase.");
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        console.error("Error en generateSentence V6:", error);
+        console.error("Prompt enviado:", prompt);
+        throw new HttpsError("internal", "Ha ocurrido un error general al comunicarse con el servicio de IA.");
     }
 });
 
@@ -111,37 +173,39 @@ exports.generateSentence = onCall(async (request) => {
 exports.evaluateTranslation = onCall(async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "Auth required.");
 
-    const { originalSentence, userTranslation, sourceLang, targetLang } = request.data;
+    const { originalSentence, userTranslation, idealTranslation, sourceLang, targetLang } = request.data;
 
     // Limpiamos etiquetas
     const cleanOriginal = originalSentence.replace(/\[.*?\|(.*?)\]/g, '$1');
 
     const prompt = `
-        Actúa como un profesor de idiomas examinador.
+        Actúa como un profesor de idiomas examinador y justo.
         
         INPUT:
         1. Frase Original (${sourceLang}): "${cleanOriginal}"
-        2. Traducción del Alumno (${targetLang}): "${userTranslation}"
+        2. Traducción IDEAL de referencia (${targetLang}): "${idealTranslation}"
+        3. Traducción del Alumno (${targetLang}): "${userTranslation}"
 
         TAREA:
-        Evalúa la traducción y asigna una nota del 0 al 10.
+        Compara la "Traducción del Alumno" con la "Traducción IDEAL". Asigna una nota de 0 a 10 y da feedback.
         
         CRITERIOS DE PUNTUACIÓN (Score):
-        - 10: Traducción perfecta o nativa.
-        - 8-9: Significado correcto, pero pequeños errores (typos leves, un género mal, orden de palabras ligeramente no natural).
-        - 5-7: El significado se entiende, pero hay errores gramaticales evidentes (conjugación, casos incorrectos).
-        - 0-4: Significado incorrecto, palabras inventadas o ininteligible.
+        - 10: La traducción del alumno es idéntica o una alternativa perfectamente válida a la traducción ideal.
+        - 8-9: Significado 100% correcto, pero con pequeños errores (typos, un artículo incorrecto, orden de palabras no tan natural como el ideal).
+        - 5-7: El significado principal se entiende, pero hay errores gramaticales o de léxico (verbo mal conjugado, palabra inadecuada pero comprensible).
+        - 0-4: El significado es incorrecto, la frase es ininteligible o se aleja mucho del sentido de la frase original.
 
         REGLAS DE FEEDBACK:
-        - Si la nota es >= 7, sé positivo.
-        - Si la nota es < 5, explica claramente el error de concepto.
-        - NO alucines palabras que no están.
+        - El feedback debe ser CONSTRUCTIVO y en Español.
+        - Si la nota NO es 10, explica por qué no lo es, basándote en la comparación con la traducción ideal.
+        - La "betterTranslation" debe ser la "Traducción IDEAL" que te he pasado, o una pequeña variación si encuentras una mejora OBVIA. No la reinventes.
 
         SALIDA JSON:
+        Devuelve un único objeto JSON con esta estructura exacta:
         {
-            "score": integer, // 0 a 10
-            "feedback": "string", // Explicación breve en Español.
-            "betterTranslation": "string" // La corrección ideal.
+            "score": integer,
+            "feedback": "string",
+            "betterTranslation": "string"
         }
     `;
 
@@ -156,8 +220,9 @@ exports.evaluateTranslation = onCall(async (request) => {
         return JSON.parse(jsonText);
 
     } catch (error) {
-        console.error("Error en evaluateTranslation:", error);
-        throw new HttpsError("internal", "Error al evaluar.");
+        console.error("Error en evaluateTranslation V6:", error);
+        console.error("Prompt enviado:", prompt);
+        throw new HttpsError("internal", "Error al evaluar la traducción.");
     }
 });
 
