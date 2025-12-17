@@ -23,10 +23,19 @@ function StatsDashboard({ user }) {
             if (!user) return;
             setLoading(true);
 
+            const maxDaysQuery = new Date();
+            maxDaysQuery.setDate(maxDaysQuery.getDate() - 90); // Fetch max 90 days, as it's the largest timeframe
+
+            const emptySnap = { docs: [] };
             const [dailyStatsSnapshot, wordsSnapshot, progressSnapshot] = await Promise.all([
-                getDocs(query(collection(db, "dailyStats"), where("userId", "==", user.uid), orderBy("date", "asc"))),
-                getDocs(collection(db, `users/${user.uid}/words`)),
-                getDocs(collection(db, `users/${user.uid}/progress`))
+                getDocs(query(
+                    collection(db, "dailyStats"), 
+                    where("userId", "==", user.uid), 
+                    where("date", ">=", maxDaysQuery),
+                    orderBy("date", "asc")
+                )),
+                Promise.resolve(emptySnap), // Was: getDocs(collection(db, `users/${user.uid}/words`))
+                Promise.resolve(emptySnap)  // Was: getDocs(collection(db, `users/${user.uid}/progress`))
             ]);
 
             // 1. Datos Históricos (Gráfico)

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase.js'; 
-import { getDocs, collection, addDoc, doc, updateDoc, deleteDoc } from "firebase/firestore";
+import { getDocs, collection, addDoc, doc, updateDoc, deleteDoc, query, limit } from "firebase/firestore";
 import { initialFormData } from '../config.js'; 
 
 // --- ICONOS ---
@@ -50,8 +50,8 @@ function VocabularyManager({ user }) {
             setIsLoading(true);
             try {
                 const [wordsSnapshot, categoriesSnapshot] = await Promise.all([
-                    getDocs(collection(db, `users/${user.uid}/words`)),
-                    getDocs(collection(db, "categories"))
+                    getDocs(query(collection(db, `users/${user.uid}/words`), limit(300))),
+                    getDocs(query(collection(db, "categories"), limit(100)))
                 ]);
                 const wordsList = wordsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 // Ordenar alfabéticamente por defecto

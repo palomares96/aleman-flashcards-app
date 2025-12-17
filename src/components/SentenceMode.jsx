@@ -128,9 +128,9 @@ function SentenceMode({ user }) {
             if (!user) return;
             try {
                 const [wordsSnap, catsSnap, progressSnap] = await Promise.all([
-                    getDocs(collection(db, `users/${user.uid}/words`)),
-                    getDocs(collection(db, "categories")),
-                    getDocs(collection(db, `users/${user.uid}/progress`))
+                    getDocs(query(collection(db, `users/${user.uid}/words`), limit(200))),
+                    getDocs(query(collection(db, "categories"), limit(100))),
+                    getDocs(query(collection(db, `users/${user.uid}/progress`), limit(200)))
                 ]);
 
                 const progressMap = {};

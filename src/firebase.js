@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
 
 // Tu configuración de Firebase que estaba en App.jsx
 const firebaseConfig = {
@@ -17,3 +17,19 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+// --- SAFETY BARRIER: USE EMULATOR ON LOCALHOST ---
+// This automatically connects to the local Firestore emulator if the app is running on localhost.
+// This is a critical safety measure to prevent development work from affecting production data and billing.
+// To use this, you must have the Firebase Emulator Suite running locally.
+// Start it with: `firebase emulators:start`
+if (window.location.hostname === 'localhost') {
+    console.log("--- DEVELOPMENT MODE ---");
+    console.log("Connecting to Firestore Emulator on localhost:8080");
+    try {
+        connectFirestoreEmulator(db, 'localhost', 8080);
+        console.log("Successfully connected to Firestore Emulator.");
+    } catch (error) {
+        console.error("Error connecting to Firestore Emulator. Make sure the emulators are running via 'firebase emulators:start'.", error);
+    }
+}

@@ -278,31 +278,6 @@ exports.stopBilling = onMessagePublished("budget-killswitch-topic", async (event
 
 // --- Función para calcular las estadísticas diarias ---
 exports.calculateDailyStats = onSchedule("every 24 hours", async (event) => {
-    console.log("Ejecutando la tarea diaria de cálculo de estadísticas...");
-    const MASTERY_CRITERIA = { MIN_PLAYS: 5, MAX_ERROR_RATE: 0.2, STREAK_NEEDED: 4 };
-    const usersSnapshot = await db.collection("users").get();
-    for (const userDoc of usersSnapshot.docs) {
-        const userId = userDoc.id;
-        const progressSnapshot = await db.collection(`users/${userId}/progress`).get();
-        let masteredCount = 0;
-        progressSnapshot.forEach(progressDoc => {
-            const progress = progressDoc.data();
-            const totalPlays = (progress.correct || 0) + (progress.incorrect || 0);
-            const errorRate = totalPlays > 0 ? (progress.incorrect || 0) / totalPlays : 0;
-            const isMasteredByPlays = totalPlays >= MASTERY_CRITERIA.MIN_PLAYS && errorRate < MASTERY_CRITERIA.MAX_ERROR_RATE;
-            const isMasteredByStreak = (progress.correctStreak || 0) >= MASTERY_CRITERIA.STREAK_NEEDED;
-            if (isMasteredByPlays || isMasteredByStreak) { masteredCount++; }
-        });
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const statId = `${userId}_${today.toISOString().split('T')[0]}`;
-        await db.collection("dailyStats").doc(statId).set({
-            userId: userId,
-            masteredCount: masteredCount,
-            date: admin.firestore.Timestamp.fromDate(today),
-        });
-        console.log(`Estadísticas guardadas para el usuario ${userId}: ${masteredCount} palabras dominadas.`);
-    }
-    console.log("Tarea de cálculo de estadísticas completada.");
+    console.log("calculateDailyStats function is disabled due to performance concerns.");
     return null;
 });

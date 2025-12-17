@@ -1,7 +1,7 @@
 import { MASTERY_CRITERIA } from '../config.js';
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase.js'; 
-import { getDocs, collection, doc, serverTimestamp, increment, setDoc } from 'firebase/firestore';
+import { getDocs, collection, doc, serverTimestamp, increment, setDoc, query, limit } from 'firebase/firestore';
 import { useAchievementCheck } from '../hooks/useAchievementCheck.js';
 
 // --- ICONOS ---
@@ -177,11 +177,12 @@ function Game({ user, onTrophyUnlock }) {
         if (!user) return;
         setLoading(true);
         try {
+            const sessionDeckSize = 50;
             const [wordsSnapshot, categoriesSnapshot, progressSnapshot, friendsSnapshot] = await Promise.all([
-                getDocs(collection(db, `users/${user.uid}/words`)),
-                getDocs(collection(db, "categories")),
-                getDocs(collection(db, `users/${user.uid}/progress`)),
-                getDocs(collection(db, `users/${user.uid}/friends`))
+                getDocs(query(collection(db, `users/${user.uid}/words`), limit(sessionDeckSize))),
+                getDocs(query(collection(db, "categories"), limit(100))),
+                getDocs(query(collection(db, `users/${user.uid}/progress`), limit(sessionDeckSize))),
+                getDocs(query(collection(db, `users/${user.uid}/friends`), limit(500)))
             ]);
 
             setFriends(friendsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -235,7 +236,7 @@ function Game({ user, onTrophyUnlock }) {
 
         if (filters.friendPlay) {
             const friendUid = filters.friendPlay;
-            const friendWordsSnapshot = await getDocs(collection(db, `users/${friendUid}/words`));
+            const friendWordsSnapshot = await getDocs(query(collection(db, `users/${friendUid}/words`), limit(50)));
             
             sourceWords = friendWordsSnapshot.docs.map(doc => ({
                 id: doc.id,

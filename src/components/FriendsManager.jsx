@@ -3,7 +3,7 @@
 // --- NOVEDAD: Importa el nuevo componente Modal ---
 import ImportModal from './ImportModal.jsx'; 
 import { db } from '../firebase.js';
-import { collection, onSnapshot, query, where, getDocs, addDoc, serverTimestamp, writeBatch, doc, deleteDoc } from "firebase/firestore";
+import { collection, onSnapshot, query, where, getDocs, addDoc, serverTimestamp, writeBatch, doc, deleteDoc, limit } from "firebase/firestore";
 import React, { useState, useEffect } from 'react';
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { getApp } from "firebase/app"; 
@@ -34,7 +34,8 @@ function FriendsManager({ user, userProfile }) {
         if (!user) return;
         setLoading(true);
         const friendsRef = collection(db, `users/${user.uid}/friends`);
-        const friendsUnsubscribe = onSnapshot(friendsRef, (snapshot) => {
+        const friendsQuery = query(friendsRef, limit(500));
+        const friendsUnsubscribe = onSnapshot(friendsQuery, (snapshot) => {
             setFriends(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
         const requestsRef = collection(db, "friendRequests");
@@ -62,7 +63,8 @@ function FriendsManager({ user, userProfile }) {
         const q = query(
             usersRef,
             where("displayName_lowercase", ">=", searchTermLower),
-            where("displayName_lowercase", "<=", searchTermLower + '\uf8ff')
+            where("displayName_lowercase", "<=", searchTermLower + '\uf8ff'),
+            limit(20)
         );
         const snapshot = await getDocs(q);
         const results = snapshot.docs

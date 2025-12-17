@@ -198,12 +198,16 @@ export function useAchievementCheck(user, onNewTrophy) {
     if (!user) return [];
     
     try {
+      // --- SAFETY PATCH ---
+      // The following queries have been temporarily disabled to prevent excessive Firestore reads.
+      // The entire achievement calculation logic should be moved to a Cloud Function.
+      const emptySnap = { docs: [] };
       const [wordsSnap, progressSnap, friendsSnap, sentencesSnap, eventsSnap] = await Promise.all([
-        getDocs(collection(db, `users/${user.uid}/words`)),
-        getDocs(collection(db, `users/${user.uid}/progress`)),
-        getDocs(collection(db, `users/${user.uid}/friends`)),
-        getDocs(collection(db, `users/${user.uid}/sentenceAttempts`)),
-        getDocs(collection(db, `users/${user.uid}/user_events`))
+        Promise.resolve(emptySnap), // Was: getDocs(collection(db, `users/${user.uid}/words`))
+        Promise.resolve(emptySnap), // Was: getDocs(collection(db, `users/${user.uid}/progress`))
+        getDocs(collection(db, `users/${user.uid}/friends`)), // Kept for social achievements
+        Promise.resolve(emptySnap), // Was: getDocs(collection(db, `users/${user.uid}/sentenceAttempts`))
+        Promise.resolve(emptySnap)  // Was: getDocs(collection(db, `users/${user.uid}/user_events`))
       ]);
 
       const words = wordsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -230,16 +234,11 @@ export function useAchievementCheck(user, onNewTrophy) {
       const now = new Date();
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(now.getDate() - 7);
-      const recentDaily = (await getDocs(collection(db, 'dailyStats'))).docs
-        .map(d => d.data())
-        .filter(d => d.userId === user.uid && d.date && d.date.toDate() >= sevenDaysAgo);
-
-      // Calcular racha más larga de días consecutivos (para "Maratón Linguístico")
-      const allDailyStats = (await getDocs(collection(db, 'dailyStats'))).docs
-        .map(d => d.data())
-        .filter(d => d.userId === user.uid && d.date)
-        .map(d => ({ date: d.date.toDate() }))
-        .sort((a, b) => a.date - b.date);
+      // --- SAFETY PATCH ---
+      // The following queries have been temporarily disabled to prevent excessive Firestore reads.
+      // This logic should be moved to a Cloud Function.
+      const recentDaily = [];
+      const allDailyStats = [];
 
       let longestStreak = 0;
       let currentStreak = 1;

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase.js'; 
-import { collection, getDocs, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, query, where, addDoc, serverTimestamp, limit } from 'firebase/firestore';
 import { initialFormData } from '../config.js';
 
 function WordForm({ user }) {
@@ -13,7 +13,7 @@ function WordForm({ user }) {
 
     useEffect(() => { 
         const fetchCategories = async () => { 
-            const snapshot = await getDocs(collection(db, "categories")); 
+            const snapshot = await getDocs(query(collection(db, "categories"), limit(100))); 
             setCategories(snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name_es }))); 
         }; 
         fetchCategories(); 
@@ -51,7 +51,7 @@ function WordForm({ user }) {
 
             // 2. CHECK DUPLICADOS
             const userWordsCollection = collection(db, `users/${user.uid}/words`);
-            const duplicateQuery = query(userWordsCollection, where("german", "==", cleanGerman));
+            const duplicateQuery = query(userWordsCollection, where("german", "==", cleanGerman), limit(1));
             if (!(await getDocs(duplicateQuery)).empty) {
                 setFeedback({ type: 'error', message: 'Esta palabra ya existe.' });
                 setIsSubmitting(false);
