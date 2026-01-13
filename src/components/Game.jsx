@@ -180,12 +180,15 @@ function Game({ user, onTrophyUnlock }) {
         // Aumentamos el límite para que el "mazo" sea representativo
         const MAX_WORDS = 1000; 
         
-        const [wordsSnapshot, categoriesSnapshot, progressSnapshot, friendsSnapshot] = await Promise.all([
-            getDocs(query(collection(db, `users/${user.uid}/words`), limit(MAX_WORDS))),
-            getDocs(query(collection(db, "categories"), limit(100))),
-            getDocs(query(collection(db, `users/${user.uid}/progress`), limit(MAX_WORDS))),
-            getDocs(query(collection(db, `users/${user.uid}/friends`), limit(500)))
-        ]);
+        // --- DENTRO DE fetchData ---
+const [wordsSnapshot, categoriesSnapshot, progressSnapshot, friendsSnapshot] = await Promise.all([
+    // Quitamos el limit() para traer TODO el mazo personal
+    getDocs(collection(db, `users/${user.uid}/words`)), 
+    getDocs(query(collection(db, "categories"), limit(100))),
+    getDocs(collection(db, `users/${user.uid}/progress`)),
+    getDocs(query(collection(db, `users/${user.uid}/friends`), limit(500)))
+]);
+
 
         setFriends(friendsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         setCategories(categoriesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
