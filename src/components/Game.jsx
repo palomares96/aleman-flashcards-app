@@ -42,19 +42,22 @@ const CardFace = ({ palabra, isFront, direction, baseGradientClasses }) => {
         background: 'linear-gradient(125deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.05) 45%, rgba(255,255,255,0) 45.1%, rgba(0,0,0,0.1) 100%)' 
     };
 
-    return (
-        <div 
-            className={`
-                absolute w-full h-full rounded-[2rem] 
-                ${baseGradientClasses} 
-                backdrop-blur-xl border border-white/20 shadow-2xl 
-                flex flex-col p-8 overflow-hidden backface-hidden
-            `}
-            style={{ 
-                backfaceVisibility: 'hidden', 
-                transform: isFront ? 'rotateY(0deg)' : 'rotateY(180deg)' 
-            }}
-        >
+    const neutralGradient = "bg-gradient-to-br from-gray-700 to-gray-800";
+const faceGradient = isGermanSide ? baseGradientClasses : neutralGradient;
+
+return (
+    <div 
+        className={`
+            absolute w-full h-full rounded-[2rem] 
+            ${faceGradient} 
+            backdrop-blur-xl border border-white/20 shadow-2xl 
+            flex flex-col p-8 overflow-hidden backface-hidden
+        `}
+        style={{ 
+            backfaceVisibility: 'hidden', 
+            transform: isFront ? 'rotateY(0deg)' : 'rotateY(180deg)' 
+        }}
+    >
             {/* Capa de brillo */}
             <div className="absolute inset-0 pointer-events-none mix-blend-overlay" style={sharpReflectionStyle}></div>
             
