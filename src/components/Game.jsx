@@ -304,7 +304,10 @@ const [wordsSnapshot, categoriesSnapshot, progressSnapshot, friendsSnapshot] = a
     }
   }, [filteredWords, gameMode]);
 
-  const palabraActual = gameMode === 'review' ? reviewDeck[0] : filteredWords[indice];
+  // Añadimos una validación extra para evitar el undefined
+const palabraActual = gameMode === 'review' 
+    ? (reviewDeck.length > 0 ? reviewDeck[0] : null)
+    : (filteredWords.length > 0 ? filteredWords[indice % filteredWords.length] : null);
 
   // --- SELECCIÓN DE SIGUIENTE PALABRA ---
   const selectNextWord = () => {
