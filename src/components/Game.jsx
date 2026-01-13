@@ -174,58 +174,64 @@ function Game({ user, onTrophyUnlock }) {
   // --- CARGA DE DATOS ---
   useEffect(() => {
     const fetchData = async () => {
-        if (!user) return;
-        setLoading(true);
-        try {
-            const sessionDeckSize = 50;
-            const [wordsSnapshot, categoriesSnapshot, progressSnapshot, friendsSnapshot] = await Promise.all([
-                getDocs(query(collection(db, `users/${user.uid}/words`), limit(sessionDeckSize))),
-                getDocs(query(collection(db, "categories"), limit(100))),
-                getDocs(query(collection(db, `users/${user.uid}/progress`), limit(sessionDeckSize))),
-                getDocs(query(collection(db, `users/${user.uid}/friends`), limit(500)))
-            ]);
+    if (!user) return;
+    setLoading(true);
+    try {
+        // Aumentamos el límite para que el "mazo" sea representativo
+        const MAX_WORDS = 1000; 
+        
+        const [wordsSnapshot, categoriesSnapshot, progressSnapshot, friendsSnapshot] = await Promise.all([
+            getDocs(query(collection(db, `users/${user.uid}/words`), limit(MAX_WORDS))),
+            getDocs(query(collection(db, "categories"), limit(100))),
+            getDocs(query(collection(db, `users/${user.uid}/progress`), limit(MAX_WORDS))),
+            getDocs(query(collection(db, `users/${user.uid}/friends`), limit(500)))
+        ]);
 
-            setFriends(friendsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            setCategories(categoriesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        setFriends(friendsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        setCategories(categoriesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        
+        const progressData = progressSnapshot.docs.reduce((acc, doc) => { 
+            acc[doc.id] = doc.data(); 
+            return acc; 
+        }, {});
+
+        const baseWords = wordsSnapshot.docs.map(doc => {
+            const wordData = doc.data();
+            const progress = progressData[doc.id] || { correct: 0, incorrect: 0, correctStreak: 0 };
+            const totalPlays = (progress.correct || 0) + (progress.incorrect || 0);
+            const errorRate = totalPlays > 0 ? (progress.incorrect || 0) / totalPlays : 0;
             
-            const progressData = progressSnapshot.docs.reduce((acc, doc) => { 
-                acc[doc.id] = doc.data(); 
-                return acc; 
-            }, {});
+            const isMastered = (totalPlays >= MASTERY_CRITERIA.MIN_PLAYS && errorRate < MASTERY_CRITERIA.MAX_ERROR_RATE) || (progress.correctStreak || 0) >= MASTERY_CRITERIA.STREAK_NEEDED;
 
-            const baseWords = wordsSnapshot.docs.map(doc => {
-                const wordData = doc.data();
-                const progress = progressData[doc.id] || { correct: 0, incorrect: 0, correctStreak: 0 };
-                const totalPlays = (progress.correct || 0) + (progress.incorrect || 0);
-                const errorRate = totalPlays > 0 ? (progress.incorrect || 0) / totalPlays : 0;
-                
-                const isMastered = (totalPlays >= MASTERY_CRITERIA.MIN_PLAYS && errorRate < MASTERY_CRITERIA.MAX_ERROR_RATE) || (progress.correctStreak || 0) >= MASTERY_CRITERIA.STREAK_NEEDED;
-
-                return { id: doc.id, ...wordData, progress: { ...progress, totalPlays, errorRate, isMastered } };
-            });
-            
-            const playableWords = [];
-            baseWords.forEach(word => {
-                playableWords.push(word);
-                if (word.type === 'verb' && word.attributes?.separablePrefixes) {
-                    word.attributes.separablePrefixes.forEach(p => {
-                        playableWords.push({ 
-                            ...word, 
-                            id: `${word.id}_${p.prefix}`, 
-                            german: p.prefix.toLowerCase() + word.german, 
-                            spanish: p.meaning, 
-                            isDerived: true 
-                        });
+            return { id: doc.id, ...wordData, progress: { ...progress, totalPlays, errorRate, isMastered } };
+        });
+        
+        const playableWords = [];
+        baseWords.forEach(word => {
+            playableWords.push(word);
+            if (word.type === 'verb' && word.attributes?.separablePrefixes) {
+                word.attributes.separablePrefixes.forEach(p => {
+                    playableWords.push({ 
+                        ...word, 
+                        id: `${word.id}_${p.prefix}`, 
+                        german: p.prefix.toLowerCase() + word.german, 
+                        spanish: p.meaning, 
+                        isDerived: true 
                     });
-                }
-            });
-            
-            setAllWords(playableWords);
-            setMyOriginalWords(playableWords);
+                });
+            }
+        });
+        
+        setAllWords(playableWords);
+        setMyOriginalWords(playableWords);
 
-        } catch (err) { setError("No se pudieron cargar los datos."); console.error(err); }
-        finally { setLoading(false); }
-    };
+    } catch (err) { 
+        setError("No se pudieron cargar los datos."); 
+        console.error(err); 
+    } finally { 
+        setLoading(false); 
+    }
+};
     fetchData();
   }, [user]);
 
