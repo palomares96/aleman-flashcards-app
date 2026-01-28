@@ -23,7 +23,7 @@ export const db = getFirestore(app);
 // This is a critical safety measure to prevent development work from affecting production data and billing.
 // To use this, you must have the Firebase Emulator Suite running locally.
 // Start it with: `firebase emulators:start`
-if (window.location.hostname === 'localhost') {
+if (window.location.hostname === 'localhost' && import.meta.env.VITE_USE_EMULATOR === 'true') {
     console.log("--- DEVELOPMENT MODE ---");
     console.log("Connecting to Firestore Emulator on localhost:8080");
     try {

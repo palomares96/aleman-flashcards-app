@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase.js';
 import { collection, getDocs, addDoc, serverTimestamp, query, orderBy, limit } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from "firebase/functions";
+import { aiService } from '../services/aiService';
 import { getApp } from "firebase/app";
 
 // --- ICONOS ---
@@ -16,7 +16,7 @@ const LightbulbIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h
 // --- UTILIDAD DE ESTILOS PARA PALABRAS (Glassmorphism) ---
 const getWordStyle = (type, gender) => {
     const base = "bg-opacity-20 border border-opacity-40 backdrop-blur-sm shadow-sm";
-    
+
     if (type === 'noun') {
         if (gender === 'm') return `${base} bg-blue-500 border-blue-400 text-blue-200`;
         if (gender === 'f') return `${base} bg-pink-500 border-pink-400 text-pink-200`;
@@ -26,14 +26,14 @@ const getWordStyle = (type, gender) => {
     if (type === 'verb') return `${base} bg-orange-500 border-orange-400 text-orange-200`;
     if (type === 'adjective') return `${base} bg-purple-500 border-purple-400 text-purple-200`;
     if (type === 'preposition') return `${base} bg-teal-500 border-teal-400 text-teal-200`;
-    
+
     return `${base} bg-gray-600 border-gray-500 text-gray-300`;
 };
 
 // --- NUEVA UTILIDAD DE ESTILOS PARA LA PUNTUACIÓN (0-10) ---
 const getScoreColor = (score) => {
     if (score === undefined || score === null) return { bg: 'bg-gray-800', text: 'text-gray-400', border: 'border-gray-600', title: '...' };
-    
+
     if (score >= 9) return { bg: 'bg-green-500/10', text: 'text-green-400', border: 'border-green-500/50', badge: 'bg-green-500 text-white', title: '¡Excelente!' };
     if (score >= 7) return { bg: 'bg-lime-500/10', text: 'text-lime-400', border: 'border-lime-500/50', badge: 'bg-lime-600 text-white', title: '¡Buen trabajo!' };
     if (score >= 5) return { bg: 'bg-yellow-500/10', text: 'text-yellow-400', border: 'border-yellow-500/50', badge: 'bg-yellow-600 text-white', title: 'Aceptable' };
@@ -51,7 +51,7 @@ const SentenceRenderer = ({ sentence }) => {
                 const match = part.match(/^\[(.*?)\|(.*?)\]$/);
                 if (match) {
                     const [_, typeTag, text] = match;
-                    
+
                     let type = 'other';
                     let gender = null;
 
@@ -81,23 +81,23 @@ function SentenceMode({ user }) {
     const [filters, setFilters] = useState({ categoryId: '', difficulty: '', performance: '' });
     const [isConfigOpen, setIsConfigOpen] = useState(false);
 
-        // Nuevos estados para filtros gramaticales
+    // Nuevos estados para filtros gramaticales
 
-        const [tense, setTense] = useState('any'); // Opciones: any, presente, preterito, perfecto, futuro
+    const [tense, setTense] = useState('any'); // Opciones: any, presente, preterito, perfecto, futuro
 
-        const [grammaticalCase, setGrammaticalCase] = useState('any'); // Opciones: any, acusativo, dativo
+    const [grammaticalCase, setGrammaticalCase] = useState('any'); // Opciones: any, acusativo, dativo
 
-        const [sentenceStructure, setSentenceStructure] = useState('any');
+    const [sentenceStructure, setSentenceStructure] = useState('any');
 
-        const [verbMood, setVerbMood] = useState('any');
+    const [verbMood, setVerbMood] = useState('any');
 
-        const [voice, setVoice] = useState('any');
+    const [voice, setVoice] = useState('any');
 
-        const [keyword, setKeyword] = useState('');
+    const [keyword, setKeyword] = useState('');
 
-    
 
-        const [pendingSettings, setPendingSettings] = useState(null);
+
+    const [pendingSettings, setPendingSettings] = useState(null);
 
     const [currentSentence, setCurrentSentence] = useState('');
     const [idealTranslation, setIdealTranslation] = useState('');
@@ -144,7 +144,7 @@ function SentenceMode({ user }) {
 
                 const expandedWords = [];
                 baseWords.forEach(word => {
-                    expandedWords.push(word); 
+                    expandedWords.push(word);
                     if (word.type === 'verb' && word.attributes?.separablePrefixes) {
                         word.attributes.separablePrefixes.forEach(p => {
                             expandedWords.push({
@@ -210,10 +210,8 @@ function SentenceMode({ user }) {
         }));
 
         try {
-            const functions = getFunctions(getApp(), "europe-west1");
-            const generateFunc = httpsCallable(functions, 'generateSentence');
-            const result = await generateFunc({ 
-                words: wordsPayload, 
+            const resultData = await aiService.generateSentence({
+                words: wordsPayload,
                 targetLang: targetGenLang,
                 tense: tense,
                 grammaticalCase: grammaticalCase,
@@ -222,10 +220,10 @@ function SentenceMode({ user }) {
                 voice: voice,
                 keyword: keyword,
             });
-            
+
             // La función ahora devuelve un objeto JSON
-            setCurrentSentence(result.data.sentence);
-            setIdealTranslation(result.data.idealTranslation);
+            setCurrentSentence(resultData.sentence);
+            setIdealTranslation(resultData.idealTranslation);
 
         } catch (err) {
             console.error(err);
@@ -240,29 +238,27 @@ function SentenceMode({ user }) {
         if (!userTranslation.trim()) return;
         setEvaluating(true);
         try {
-            const functions = getFunctions(getApp(), "europe-west1");
-            const evalFunc = httpsCallable(functions, 'evaluateTranslation');
             const sourceLang = direction === 'de-es' ? 'Alemán' : 'Español';
             const targetLang = direction === 'de-es' ? 'Español' : 'Alemán';
 
-            const result = await evalFunc({
+            const resultData = await aiService.evaluateTranslation({
                 originalSentence: currentSentence,
                 userTranslation: userTranslation,
-                idealTranslation: idealTranslation, // Pasamos la traducción ideal
+                idealTranslation: idealTranslation,
                 sourceLang,
                 targetLang
             });
-            setEvaluation(result.data);
-            
+            setEvaluation(resultData);
+
             // Guardar el intento de frase en Firestore
             if (user) {
                 await addDoc(collection(db, `users/${user.uid}/sentenceAttempts`), {
                     sentence: currentSentence,
                     userTranslation: userTranslation,
-                    score: result.data.score,
+                    score: resultData.score,
                     direction,
-                    feedback: result.data.feedback,
-                    betterTranslation: result.data.betterTranslation,
+                    feedback: resultData.feedback,
+                    betterTranslation: resultData.betterTranslation,
                     createdAt: serverTimestamp(),
                     // Guardar los filtros usados para los logros
                     tense,
@@ -308,9 +304,9 @@ function SentenceMode({ user }) {
             <div className="flex items-center justify-between mb-2">
                 <span className="text-gray-400 text-sm">{label}</span>
                 <div className="flex items-center gap-2 bg-gray-700 rounded px-2">
-                    <button onClick={() => setCounts(p => ({...p, [field]: Math.max(0, p[field]-1)}))} className="text-red-400 font-bold hover:bg-gray-600 px-2">-</button>
+                    <button onClick={() => setCounts(p => ({ ...p, [field]: Math.max(0, p[field] - 1) }))} className="text-red-400 font-bold hover:bg-gray-600 px-2">-</button>
                     <span className="w-4 text-center text-sm font-mono">{counts[field]}</span>
-                    <button onClick={() => setCounts(p => ({...p, [field]: Math.min(3, p[field]+1)}))} className="text-green-400 font-bold hover:bg-gray-600 px-2">+</button>
+                    <button onClick={() => setCounts(p => ({ ...p, [field]: Math.min(3, p[field] + 1) }))} className="text-green-400 font-bold hover:bg-gray-600 px-2">+</button>
                 </div>
             </div>
         );
@@ -333,19 +329,19 @@ function SentenceMode({ user }) {
                         <div>
                             <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Juego</h4>
                             <div className="flex gap-2 mb-4">
-                                <button onClick={() => setPendingSettings(p => ({...p, direction: 'de-es'}))} className={`flex-1 py-2 text-sm rounded-lg ${pendingSettings.direction === 'de-es' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>🇩🇪 → 🇪🇸</button>
-                                <button onClick={() => setPendingSettings(p => ({...p, direction: 'es-de'}))} className={`flex-1 py-2 text-sm rounded-lg ${pendingSettings.direction === 'es-de' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>🇪🇸 → 🇩🇪</button>
+                                <button onClick={() => setPendingSettings(p => ({ ...p, direction: 'de-es' }))} className={`flex-1 py-2 text-sm rounded-lg ${pendingSettings.direction === 'de-es' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>🇩🇪 → 🇪🇸</button>
+                                <button onClick={() => setPendingSettings(p => ({ ...p, direction: 'es-de' }))} className={`flex-1 py-2 text-sm rounded-lg ${pendingSettings.direction === 'es-de' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>🇪🇸 → 🇩🇪</button>
                             </div>
                             <div className="space-y-3">
-                                <select value={pendingSettings.filters.difficulty} onChange={e => setPendingSettings(p => ({...p, filters: {...p.filters, difficulty: e.target.value}}))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300"><option value="">Cualquier Nivel</option>{[1,2,3,4,5].map(n => <option key={n} value={n}>Nivel {n}</option>)}</select>
-                                <select value={pendingSettings.filters.categoryId} onChange={e => setPendingSettings(p => ({...p, filters: {...p.filters, categoryId: e.target.value}}))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300"><option value="">Cualquier Categoría</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name_es}</option>)}</select>
+                                <select value={pendingSettings.filters.difficulty} onChange={e => setPendingSettings(p => ({ ...p, filters: { ...p.filters, difficulty: e.target.value } }))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300"><option value="">Cualquier Nivel</option>{[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>Nivel {n}</option>)}</select>
+                                <select value={pendingSettings.filters.categoryId} onChange={e => setPendingSettings(p => ({ ...p, filters: { ...p.filters, categoryId: e.target.value } }))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300"><option value="">Cualquier Categoría</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name_es}</option>)}</select>
                             </div>
                         </div>
                         {/* --- COLUMNA GRAMÁTICA --- */}
                         <div>
                             <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Gramática</h4>
                             <div className="space-y-3">
-                                <select value={pendingSettings.tense} onChange={e => setPendingSettings(p => ({...p, tense: e.target.value}))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300">
+                                <select value={pendingSettings.tense} onChange={e => setPendingSettings(p => ({ ...p, tense: e.target.value }))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300">
                                     <option value="any">Cualquier Tiempo</option>
                                     <option value="Präsens">Presente</option>
                                     <option value="Präteritum">Pasado (Präteritum)</option>
@@ -353,13 +349,13 @@ function SentenceMode({ user }) {
                                     <option value="Plusquamperfekt">Pluscuamperfecto</option>
                                     <option value="Futur I">Futuro I</option>
                                 </select>
-                                <select value={pendingSettings.grammaticalCase} onChange={e => setPendingSettings(p => ({...p, grammaticalCase: e.target.value}))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300">
+                                <select value={pendingSettings.grammaticalCase} onChange={e => setPendingSettings(p => ({ ...p, grammaticalCase: e.target.value }))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300">
                                     <option value="any">Cualquier Caso</option>
                                     <option value="acusativo">Acusativo</option>
                                     <option value="dativo">Dativo</option>
                                     <option value="genitivo">Genitivo</option>
                                 </select>
-                                 <select value={pendingSettings.sentenceStructure} onChange={e => setPendingSettings(p => ({...p, sentenceStructure: e.target.value}))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300">
+                                <select value={pendingSettings.sentenceStructure} onChange={e => setPendingSettings(p => ({ ...p, sentenceStructure: e.target.value }))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300">
                                     <option value="any">Cualquier Estructura</option>
                                     <option value="Hauptsatz">Solo Oración Principal</option>
                                     <option value="Nebensatz">Con Oración Subordinada</option>
@@ -378,26 +374,26 @@ function SentenceMode({ user }) {
                                 <Counter isPending label="Otros" field="other" />
                             </div>
                             <div className="space-y-3 border-t border-gray-700 pt-4">
-                                <select value={pendingSettings.verbMood} onChange={e => setPendingSettings(p => ({...p, verbMood: e.target.value}))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300">
+                                <select value={pendingSettings.verbMood} onChange={e => setPendingSettings(p => ({ ...p, verbMood: e.target.value }))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300">
                                     <option value="any">Cualquier Modo</option>
                                     <option value="Konjunktiv II">Konjunktiv II</option>
                                     <option value="Imperativ">Imperativo</option>
                                 </select>
-                                <select value={pendingSettings.voice} onChange={e => setPendingSettings(p => ({...p, voice: e.target.value}))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300">
+                                <select value={pendingSettings.voice} onChange={e => setPendingSettings(p => ({ ...p, voice: e.target.value }))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300">
                                     <option value="any">Cualquier Voz</option>
                                     <option value="Passiv">Voz Pasiva</option>
                                 </select>
-                                <input 
+                                <input
                                     type="text"
                                     placeholder="Forzar palabra clave..."
                                     value={pendingSettings.keyword}
-                                    onChange={e => setPendingSettings(p => ({...p, keyword: e.target.value}))}
+                                    onChange={e => setPendingSettings(p => ({ ...p, keyword: e.target.value }))}
                                     className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300 placeholder-gray-500"
                                 />
                             </div>
                         </div>
                     </div>
-                     {/* --- BOTONES DE ACCIÓN --- */}
+                    {/* --- BOTONES DE ACCIÓN --- */}
                     <div className="flex justify-end gap-4 mt-6 border-t border-gray-700 pt-4">
                         <button onClick={() => setIsConfigOpen(false)} className="px-6 py-2 text-sm font-bold text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors">Cancelar</button>
                         <button onClick={saveSettings} className="px-6 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors">Guardar Cambios</button>
@@ -406,7 +402,7 @@ function SentenceMode({ user }) {
             )}
 
             <div className="bg-gray-800 rounded-2xl shadow-xl overflow-hidden border border-gray-700">
-                
+
                 {/* --- CONTADORES DE PALABRAS (VISIBLES FUERA DE AJUSTES) --- */}
                 <div className="bg-gray-900/30 p-3 border-b border-gray-700 flex flex-wrap justify-center gap-x-6 gap-y-1 text-sm">
                     <span className="text-gray-400">Palabras:</span>
@@ -434,9 +430,9 @@ function SentenceMode({ user }) {
                         </div>
                     )}
 
-                    {loading ? <div className="flex flex-col items-center text-blue-400 animate-pulse"><SpinnerIcon /><span className="mt-2 text-sm">Creando frase...</span></div> : 
-                     currentSentence ? <div className="w-full"><p className="text-xs font-bold text-gray-500 mb-4 uppercase tracking-widest">Traduce</p><SentenceRenderer sentence={currentSentence} /></div> : 
-                     <div className="text-gray-500 italic">Configura y pulsa generar.</div>}
+                    {loading ? <div className="flex flex-col items-center text-blue-400 animate-pulse"><SpinnerIcon /><span className="mt-2 text-sm">Creando frase...</span></div> :
+                        currentSentence ? <div className="w-full"><p className="text-xs font-bold text-gray-500 mb-4 uppercase tracking-widest">Traduce</p><SentenceRenderer sentence={currentSentence} /></div> :
+                            <div className="text-gray-500 italic">Configura y pulsa generar.</div>}
                 </div>
 
                 {currentSentence && (
@@ -444,7 +440,7 @@ function SentenceMode({ user }) {
                         {!evaluation && (
                             <form onSubmit={checkTranslation}>
                                 <div className="relative">
-                                    <textarea 
+                                    <textarea
                                         rows={3}
                                         value={userTranslation}
                                         onChange={(e) => setUserTranslation(e.target.value)}
@@ -482,7 +478,7 @@ function SentenceMode({ user }) {
                                                 {scoreStyle.title}
                                             </h4>
                                             <p className="text-gray-300 text-sm leading-relaxed mb-3">{evaluation.feedback}</p>
-                                            
+
                                             {evaluation.betterTranslation && (
                                                 <div className="bg-black/20 p-3 rounded-lg mt-2 border border-gray-700/50">
                                                     <div className="flex items-center gap-2 text-xs font-bold text-blue-400 uppercase mb-1"><LightbulbIcon /> Solución ideal</div>
@@ -508,7 +504,7 @@ function SentenceMode({ user }) {
                     <RefreshIcon /> Generar Primera Frase
                 </button>
             )}
-            
+
             {error && <div className="mt-4 text-center p-4 bg-red-900/30 border border-red-800 rounded-lg text-red-300">{error}</div>}
         </div>
     );
