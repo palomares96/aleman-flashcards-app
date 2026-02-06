@@ -177,6 +177,9 @@ function Game({ user, onTrophyUnlock }) {
     // Estado para controlar la animación de salida
     const [isSwipingOut, setIsSwipingOut] = useState(false);
 
+    // Estado para estadísticas de la sesión (resumen final)
+    const [sessionStats, setSessionStats] = useState({ correct: 0, incorrect: [], total: 0 });
+
     // --- CARGA DE DATOS ---
     useEffect(() => {
         const fetchData = async () => {
@@ -295,6 +298,11 @@ function Game({ user, onTrophyUnlock }) {
         applyFiltersAndLoadFriendWords();
     }, [filters, myOriginalWords]);
 
+    // Resetear estadísticas al cambiar filtros o recargar palabras
+    useEffect(() => {
+        setSessionStats({ correct: 0, incorrect: [], total: 0 });
+    }, [filteredWords]);
+
     // --- INICIALIZACIÓN DEL MAZO ---
     useEffect(() => {
         if (filteredWords.length === 0) return;
@@ -366,6 +374,13 @@ function Game({ user, onTrophyUnlock }) {
                 dataToUpdate.correct = increment(1);
                 dataToUpdate.correctStreak = increment(1);
 
+                // Actualizar estadísticas de sesión
+                setSessionStats(prev => ({
+                    ...prev,
+                    correct: prev.correct + 1,
+                    total: prev.total + 1
+                }));
+
                 // Si hay filtros activos, registrar el evento para logros
                 if (filters.difficulty || filters.categoryId) {
                     const eventsRef = collection(db, `users/${user.uid}/user_events`);
@@ -382,6 +397,13 @@ function Game({ user, onTrophyUnlock }) {
             } else {
                 dataToUpdate.incorrect = increment(1);
                 dataToUpdate.correctStreak = 0;
+
+                // Actualizar estadísticas de sesión
+                setSessionStats(prev => ({
+                    ...prev,
+                    incorrect: [...prev.incorrect, palabraActual],
+                    total: prev.total + 1
+                }));
             }
 
             const userDocRef = doc(db, `users`, user.uid);
@@ -413,7 +435,21 @@ function Game({ user, onTrophyUnlock }) {
     const clearFilters = () => { setFilters(initialFilters); setIsFilterMenuOpen(false); };
     const handleFlip = () => { if (!isAnimating && !isSwipingOut) { setIsAnimating(true); setFlipped(!flipped); setTimeout(() => setIsAnimating(false), 300); } };
     const toggleDirection = () => { setDirection(prev => prev === 'de-es' ? 'es-de' : 'de-es'); setFlipped(false); };
-    const handleShuffleReview = () => { const shuffled = [...filteredWords].sort(() => Math.random() - 0.5); setReviewDeck(shuffled); };
+
+    // Funciones para el Resumen Final
+    const handleRestartFullDeck = () => {
+        const shuffled = [...filteredWords].sort(() => Math.random() - 0.5);
+        setReviewDeck(shuffled);
+        setSessionStats({ correct: 0, incorrect: [], total: 0 });
+    };
+
+    const handleRetryMistakes = () => {
+        if (sessionStats.incorrect.length === 0) return;
+        const shuffled = [...sessionStats.incorrect].sort(() => Math.random() - 0.5);
+        setReviewDeck(shuffled);
+        // Reseteamos stats para la nueva "mini-ronda"
+        setSessionStats({ correct: 0, incorrect: [], total: 0 });
+    };
 
     if (loading) return <div className="h-full flex items-center justify-center text-white/50 animate-pulse">Cargando mazo...</div>;
     if (error) return <div className="h-full flex items-center justify-center text-red-400">{error}</div>;
@@ -440,11 +476,43 @@ function Game({ user, onTrophyUnlock }) {
             <div className="flex-1 flex flex-col justify-center relative perspective-1000 mb-8 min-h-[350px]">
                 {filteredWords.length > 0 ? (
                     gameMode === 'review' && reviewDeck.length === 0 ? (
-                        <div className="text-center p-8 bg-gray-800/50 rounded-3xl border border-white/5 backdrop-blur-sm">
-                            <p className="text-3xl mb-4">🎉</p>
-                            <p className="text-2xl font-bold text-green-400 mb-2">¡Repaso completado!</p>
-                            <p className="text-gray-400 mb-6">Has visto todas las palabras.</p>
-                            <button onClick={handleShuffleReview} className="px-6 py-3 font-bold bg-blue-600 rounded-xl hover:bg-blue-500 text-white transition-colors">Volver a barajar</button>
+                        <div className="text-center p-8 bg-gray-800/80 rounded-3xl border border-white/10 backdrop-blur-md shadow-2xl max-w-md mx-auto">
+                            <div className="mb-6">
+                                <p className="text-4xl mb-2">🎉</p>
+                                <h2 className="text-3xl font-bold text-white mb-1">¡Repaso completado!</h2>
+                                <p className="text-gray-400 text-sm">Aquí tienes tu resumen:</p>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4 mb-8">
+                                <div className="bg-green-500/10 p-4 rounded-2xl border border-green-500/20">
+                                    <p className="text-3xl font-bold text-green-400">{sessionStats.correct}</p>
+                                    <p className="text-xs uppercase tracking-wider text-green-200/50 font-bold">Acertadas</p>
+                                </div>
+                                <div className="bg-red-500/10 p-4 rounded-2xl border border-red-500/20">
+                                    <p className="text-3xl font-bold text-red-400">{sessionStats.incorrect.length}</p>
+                                    <p className="text-xs uppercase tracking-wider text-red-200/50 font-bold">Falladas</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <button
+                                    onClick={handleRestartFullDeck}
+                                    className="w-full py-4 font-bold bg-blue-600 rounded-xl hover:bg-blue-500 text-white transition-all shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                                    Jugar todo de nuevo
+                                </button>
+
+                                {sessionStats.incorrect.length > 0 && (
+                                    <button
+                                        onClick={handleRetryMistakes}
+                                        className="w-full py-4 font-bold bg-orange-500/10 border border-orange-500/50 text-orange-400 rounded-xl hover:bg-orange-500 hover:text-white transition-all shadow-lg flex items-center justify-center gap-2"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
+                                        Repasar {sessionStats.incorrect.length} fallos
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     ) : !palabraActual ? (
                         <div className="text-center text-white/50">Cargando palabra...</div>
@@ -493,6 +561,16 @@ function Game({ user, onTrophyUnlock }) {
                         {filters.type === 'noun' && (<div className="space-y-2 animate-fade-in"><label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Género</label><select name="gender" value={filters.gender} onChange={handleFilterChange} className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white outline-none focus:border-blue-500"><option value="">Todos</option><option value="m">Masculino (der)</option><option value="f">Femenino (die)</option><option value="n">Neutro (das)</option></select></div>)}
                         <div className="space-y-2"><label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Categoría</label><select name="categoryId" value={filters.categoryId} onChange={handleFilterChange} className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white outline-none focus:border-blue-500"><option value="">Todas</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name_es}</option>)}</select></div>
                         <div className="space-y-2"><label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Dificultad</label><div className="flex gap-2">{[1, 2, 3, 4, 5].map(lvl => (<button key={lvl} onClick={() => handleFilterChange({ target: { name: 'difficulty', value: filters.difficulty === lvl.toString() ? '' : lvl.toString() } })} className={`flex-1 py-2 rounded-lg font-bold text-sm border ${filters.difficulty === lvl.toString() ? 'bg-blue-600 border-blue-600 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>{lvl}</button>))}</div></div>
+
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Rendimiento</label>
+                            <select name="performance" value={filters.performance} onChange={handleFilterChange} className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white outline-none focus:border-blue-500">
+                                <option value="">Todas las palabras</option>
+                                <option value="new">Solo Nuevas (Menos de 3 jugadas)</option>
+                                <option value="struggling">Difíciles (Falladas {'>'} 30%)</option>
+                                <option value="difficult">Muy Difíciles (Falladas {'>'} 50%)</option>
+                            </select>
+                        </div>
                         <div className="space-y-2"><label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Modo Amigo</label><select name="friendPlay" value={filters.friendPlay || ''} onChange={handleFilterChange} className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white outline-none focus:border-purple-500"><option value="">Jugar solo</option>{friends.map(friend => (<option key={friend.id} value={friend.id}>Mazo de {friend.displayName}</option>))}</select></div>
                     </div>
 
