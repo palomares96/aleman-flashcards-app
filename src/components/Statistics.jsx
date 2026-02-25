@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase.js';
-import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
 import { MASTERY_CRITERIA } from '../config.js';
 import { Line } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler } from 'chart.js';
@@ -111,8 +111,35 @@ function StatsDashboard({ user }) {
                     }
                 });
 
-                // 4. Cálculo de "Dominadas Hoy" (Delta)
-                const lastRecordedTotal = dailyData.length > 0 ? dailyData[dailyData.length - 1].value : 0;
+                // 4. Guardar snapshot diario si no existe aún
+                const todayStr = today.toISOString().split('T')[0]; // "2026-02-25"
+                const dailyStatDocId = `${user.uid}_${todayStr}`;
+                const dailyStatRef = doc(db, "dailyStats", dailyStatDocId);
+
+                try {
+                    const existingSnap = await getDoc(dailyStatRef);
+                    if (!existingSnap.exists()) {
+                        // Crear snapshot de hoy
+                        await setDoc(dailyStatRef, {
+                            userId: user.uid,
+                            date: Timestamp.fromDate(new Date(todayStr + 'T00:00:00')),
+                            masteredCount: liveMasteredTotal
+                        });
+                    } else {
+                        // Actualizar si el conteo ha cambiado
+                        const existingData = existingSnap.data();
+                        if (existingData.masteredCount !== liveMasteredTotal) {
+                            await setDoc(dailyStatRef, { masteredCount: liveMasteredTotal }, { merge: true });
+                        }
+                    }
+                } catch (snapErr) {
+                    console.warn("Could not save daily stats snapshot:", snapErr);
+                }
+
+                // 5. Cálculo de "Dominadas Hoy" (Delta vs. ayer)
+                const yesterdayData = dailyData.length > 0 ? dailyData[dailyData.length - 1] : null;
+                // Si el último dato no es de hoy, usamos su valor como base para calcular el delta
+                const lastRecordedTotal = yesterdayData ? yesterdayData.value : 0;
                 const masteredToday = Math.max(0, liveMasteredTotal - lastRecordedTotal);
 
                 const masteredByType = Object.entries(masteredByTypeCounters).map(([name, value]) => ({ name, value }));

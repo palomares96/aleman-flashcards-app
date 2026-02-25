@@ -57,11 +57,12 @@ service cloud.firestore {
         allow read, write: if false;
     }
 
-    // Daily stats can only be read by the user they belong to.
-    // They are written by a cloud function.
+    // Daily stats: users can read and write their own daily snapshots.
+    // The document ID format is: {userId}_{YYYY-MM-DD}
     match /dailyStats/{statId} {
-        allow read: if isOwner(resource.data.userId);
-        allow write: if false; // Only backend can write
+        allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+        allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+        allow update: if request.auth != null && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid;
     }
     
     // Categories are shared and can be read and created by any authenticated user.
