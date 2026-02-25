@@ -9,6 +9,10 @@ const config: CapacitorConfig = {
       skipNativeAuth: false,
       providers: ["google.com"],
     },
+    CapacitorUpdater: {
+      autoUpdate: true,
+      statsUrl: "https://api.capgo.app (https://api.capgo.app/)",
+    },
   },
 };
 

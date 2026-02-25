@@ -75,33 +75,68 @@ function AppLayout({ user, userProfile }) {
     };
 
     return (
-        <div className="flex flex-col h-screen font-sans text-white bg-slate-950">
-            {/* Main Content Area */}
-            <main className="flex-1 overflow-y-auto w-full max-w-md mx-auto pt-10 pb-24 px-6 relative z-0">
-                {/* Background decorative blobs */}
-                <div className="fixed top-0 left-0 w-64 h-64 bg-blue-600/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
-                <div className="fixed bottom-0 right-0 w-80 h-80 bg-purple-600/10 rounded-full blur-3xl translate-x-1/3 translate-y-1/3 pointer-events-none"></div>
-
-                <div className="relative z-10 h-full">
-                    {banner && <TrophyBanner trophy={banner} onClose={() => setBanner(null)} />}
-                    {view === 'game' && <Game user={user} onTrophyUnlock={(t) => setBanner(t)} />}
-                    {view === 'sentenceMode' && <SentenceMode user={user} userProfile={userProfile} />}
-                    {view === 'library' && <LibrarySection user={user} />}
-                    {view === 'achievements' && <Achievements user={user} onUnlock={(t) => setBanner(t)} />}
-                    {view === 'profile' && <ProfileSection user={user} userProfile={userProfile} />}
+        <div className="flex h-screen font-sans text-white bg-slate-950">
+            {/* Desktop Sidebar Navigation - hidden on mobile, visible on lg+ */}
+            <aside className="hidden lg:flex flex-col w-64 shrink-0 bg-slate-900/80 border-r border-white/10 pt-8 pb-6 px-4">
+                <div className="mb-10 px-3">
+                    <h1 className="text-xl font-extrabold tracking-tight text-white">Aleman App</h1>
+                    <p className="text-xs text-gray-500 mt-1">Tu compañero de alemán</p>
                 </div>
-            </main>
-
-            {/* Modern Bottom Navigation (Glassmorphism) */}
-            <nav className="fixed bottom-0 w-full z-50 bg-slate-950/80 backdrop-blur-xl border-t border-white/10 pb-safe pt-2">
-                <div className="flex justify-around items-end max-w-md mx-auto px-2">
-                    <NavItem viewName="game" label="Jugar" Icon={GameIcon} />
-                    <NavItem viewName="sentenceMode" label="Frases" Icon={SentenceIcon} />
-                    <NavItem viewName="library" label="Biblioteca" Icon={LibraryIcon} />
-                    <NavItem viewName="achievements" label="Logros" Icon={AchievementsIcon} />
-                    <NavItem viewName="profile" label="Perfil" Icon={ProfileIcon} />
+                <nav className="flex flex-col gap-1 flex-1">
+                    {[
+                        { viewName: 'game', label: 'Jugar', Icon: GameIcon },
+                        { viewName: 'sentenceMode', label: 'Frases', Icon: SentenceIcon },
+                        { viewName: 'library', label: 'Biblioteca', Icon: LibraryIcon },
+                        { viewName: 'achievements', label: 'Logros', Icon: AchievementsIcon },
+                        { viewName: 'profile', label: 'Perfil', Icon: ProfileIcon },
+                    ].map(({ viewName, label, Icon }) => (
+                        <button
+                            key={viewName}
+                            onClick={() => setView(viewName)}
+                            className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${view === viewName
+                                    ? 'bg-blue-600/20 text-blue-400 shadow-lg shadow-blue-900/10'
+                                    : 'text-gray-400 hover:text-white hover:bg-white/5'
+                                }`}
+                        >
+                            <Icon active={view === viewName} />
+                            <span>{label}</span>
+                        </button>
+                    ))}
+                </nav>
+                <div className="px-3 pt-4 border-t border-white/10">
+                    <p className="text-[10px] text-gray-600 font-medium">© 2026 Aleman App</p>
                 </div>
-            </nav>
+            </aside>
+
+            {/* Main content wrapper */}
+            <div className="flex flex-col flex-1 min-w-0">
+                {/* Main Content Area */}
+                <main className="flex-1 overflow-y-auto w-full max-w-md lg:max-w-2xl mx-auto pt-10 pb-24 lg:pb-10 px-6 relative z-0">
+                    {/* Background decorative blobs */}
+                    <div className="fixed top-0 left-0 w-64 h-64 bg-blue-600/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
+                    <div className="fixed bottom-0 right-0 w-80 h-80 bg-purple-600/10 rounded-full blur-3xl translate-x-1/3 translate-y-1/3 pointer-events-none"></div>
+
+                    <div className="relative z-10 h-full">
+                        {banner && <TrophyBanner trophy={banner} onClose={() => setBanner(null)} />}
+                        {view === 'game' && <Game user={user} onTrophyUnlock={(t) => setBanner(t)} />}
+                        {view === 'sentenceMode' && <SentenceMode user={user} userProfile={userProfile} />}
+                        {view === 'library' && <LibrarySection user={user} />}
+                        {view === 'achievements' && <Achievements user={user} onUnlock={(t) => setBanner(t)} />}
+                        {view === 'profile' && <ProfileSection user={user} userProfile={userProfile} />}
+                    </div>
+                </main>
+
+                {/* Mobile Bottom Navigation (Glassmorphism) - hidden on desktop */}
+                <nav className="fixed bottom-0 w-full z-50 bg-slate-950/80 backdrop-blur-xl border-t border-white/10 pb-safe pt-2 lg:hidden">
+                    <div className="flex justify-around items-end max-w-md mx-auto px-2">
+                        <NavItem viewName="game" label="Jugar" Icon={GameIcon} />
+                        <NavItem viewName="sentenceMode" label="Frases" Icon={SentenceIcon} />
+                        <NavItem viewName="library" label="Biblioteca" Icon={LibraryIcon} />
+                        <NavItem viewName="achievements" label="Logros" Icon={AchievementsIcon} />
+                        <NavItem viewName="profile" label="Perfil" Icon={ProfileIcon} />
+                    </div>
+                </nav>
+            </div>
         </div>
     );
 }
