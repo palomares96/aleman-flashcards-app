@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "250038580123",
+    "project_id": "aleman-flashcards",
+    "storage_bucket": "aleman-flashcards.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:250038580123:android:6916642d440b0b05b2273e",
+        "android_client_info": {
+          "package_name": "com.aleman.flashcards"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "250038580123-rt4ne0kpcfbncfblkkur4laiosaaq7i7.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aleman.flashcards",
+            "certificate_hash": "7c6d274e4293638f541fb26c79231e99bb3148a1"
+          }
+        },
+        {
+          "client_id": "250038580123-cbpiopd1pkrdln1rm5uttofl7fackopo.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCvFo9rzTq9eR0FXJ7nBhLVjzfE2Y5hchE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "250038580123-cbpiopd1pkrdln1rm5uttofl7fackopo.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

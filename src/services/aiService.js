@@ -8,21 +8,21 @@ import { getApp } from "firebase/app";
 
 // Check if the browser supports the Prompt API (Chrome Built-in AI)
 const hasLocalAI = () => {
-  return typeof window.ai !== "undefined" && typeof window.ai.languageModel !== "undefined";
+    return typeof window.ai !== "undefined" && typeof window.ai.languageModel !== "undefined";
 };
 
 // --- PROMPTS ---
 
 const constructSentencePrompt = (params) => {
-    const { 
-        words, targetLang, tense, grammaticalCase, 
-        sentenceStructure, verbMood, voice, keyword 
+    const {
+        words, targetLang, tense, grammaticalCase,
+        sentenceStructure, verbMood, voice, keyword
     } = params;
 
     const langName = targetLang === 'DE' ? 'Alemán' : 'Español';
     const targetTranslationLang = targetLang === 'DE' ? 'Español' : 'Alemán';
-    
-    let wordsDetails = words.map(w => 
+
+    let wordsDetails = words.map(w =>
         `"${w.term}" (significado deseado: "${w.translation}", tipo: ${w.type || 'palabra'})`
     ).join(", ");
 
@@ -116,7 +116,7 @@ const runLocalModel = async (prompt, systemInstruction) => {
     try {
         const capabilities = await window.ai.languageModel.capabilities();
         if (capabilities.available === 'no') {
-             throw new Error("Local AI model not available");
+            throw new Error("Local AI model not available");
         }
 
         // Create a session. Note: API is experimental and might change.
@@ -141,40 +141,55 @@ const runLocalModel = async (prompt, systemInstruction) => {
 // --- EXPORTED METHODS ---
 
 export const aiService = {
-    generateSentence: async (params) => {
-        // 1. Try Local
+    generateSentence: async (params, userTier = 'free') => {
+        // 1. Try Local (Preferred for everyone)
         if (hasLocalAI()) {
             try {
                 console.log("Attempting local generation (Gemini Nano)...");
                 const prompt = constructSentencePrompt(params);
-                // System prompt is implicit in the prompt for simplicity or passed if API supports it
-                // We'll pass the whole thing as prompt for the local model to be safe
                 return await runLocalModel(prompt, "You are a helpful language teacher.");
             } catch (e) {
-                console.warn("Local generation failed, falling back to cloud.", e);
+                console.warn("Local generation failed.", e);
+                // If user is FREE, we CANNOT fallback to cloud.
+                if (userTier !== 'premium') {
+                    throw new Error("Tu dispositivo no pudo generar la frase localmente y tu plan Gratuito no incluye acceso a la Nube. Actualiza a Premium para acceso ilimitado.");
+                }
+                console.log("Falling back to cloud (Premium)...");
+            }
+        } else {
+            // If no local AI and user is FREE
+            if (userTier !== 'premium') {
+                throw new Error("Tu dispositivo no soporta IA Local y tu plan Gratuito no incluye acceso a la Nube. Actualiza a Premium.");
             }
         }
 
-        // 2. Fallback to Cloud
+        // 2. Fallback to Cloud (Only for PREMIUM)
         const functions = getFunctions(getApp(), "europe-west1");
         const generateFunc = httpsCallable(functions, 'generateSentence');
         const result = await generateFunc(params);
         return result.data;
     },
 
-    evaluateTranslation: async (params) => {
-         // 1. Try Local
-         if (hasLocalAI()) {
+    evaluateTranslation: async (params, userTier = 'free') => {
+        // 1. Try Local
+        if (hasLocalAI()) {
             try {
                 console.log("Attempting local evaluation (Gemini Nano)...");
                 const prompt = constructEvaluationPrompt(params);
                 return await runLocalModel(prompt, "You are a helpful language teacher.");
             } catch (e) {
-                console.warn("Local evaluation failed, falling back to cloud.", e);
+                console.warn("Local evaluation failed.", e);
+                if (userTier !== 'premium') {
+                    throw new Error("Error en evaluación local. Plan Premium requerido para acceso a la Nube.");
+                }
+            }
+        } else {
+            if (userTier !== 'premium') {
+                throw new Error("IA Local no soportada. Plan Premium requerido para acceso a la Nube.");
             }
         }
 
-        // 2. Fallback to Cloud
+        // 2. Fallback to Cloud (Only for PREMIUM)
         const functions = getFunctions(getApp(), "europe-west1");
         const evalFunc = httpsCallable(functions, 'evaluateTranslation');
         const result = await evalFunc(params);

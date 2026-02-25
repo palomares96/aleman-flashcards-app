@@ -3,31 +3,64 @@
 
 // --- Importaciones ---
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
-const { onMessagePublished } = require("firebase-functions/v2/pubsub");
-const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { setGlobalOptions } = require("firebase-functions/v2");
-// const { defineString } = require('firebase-functions/v2/params'); // <-- LÍNEA PROBLEMÁTICA ELIMINADA
 const { VertexAI } = require('@google-cloud/vertexai');
 const admin = require("firebase-admin");
-const { CloudBillingClient } = require("@google-cloud/billing");
 
 // --- Inicialización ---
 admin.initializeApp();
 const db = admin.firestore();
-const billing = new CloudBillingClient();
 setGlobalOptions({ region: "europe-west1" });
+
+// =================================================================================
+// --- Rate Limiting ---
+// =================================================================================
+// Prevents abuse by limiting AI function calls per user per calendar day.
+// Uses Firestore to track call counts.
+const DAILY_LIMIT_PER_FUNCTION = 50;
+
+async function checkRateLimit(userId, functionName) {
+    const today = new Date().toISOString().split('T')[0]; // "2026-02-17"
+    const ref = db.doc(`rateLimits/${userId}_${functionName}_${today}`);
+
+    const result = await db.runTransaction(async (transaction) => {
+        const snap = await transaction.get(ref);
+        const current = snap.exists ? snap.data().count : 0;
+
+        if (current >= DAILY_LIMIT_PER_FUNCTION) {
+            return { limited: true, count: current };
+        }
+
+        transaction.set(ref, {
+            count: current + 1,
+            userId,
+            functionName,
+            date: today,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+
+        return { limited: false, count: current + 1 };
+    });
+
+    if (result.limited) {
+        throw new HttpsError("resource-exhausted",
+            `Has alcanzado el límite diario de ${DAILY_LIMIT_PER_FUNCTION} usos para esta función. Inténtalo mañana.`);
+    }
+
+    return result.count;
+}
 
 // =================================================================================
 // --- Configuración del Modelo de IA (Gemini) ---
 // =================================================================================
 // NOTA: La clave de API ahora se accederá directamente a través de process.env más adelante
-const vertex_ai = new VertexAI({ 
-    project: process.env.GCLOUD_PROJECT, 
+const vertex_ai = new VertexAI({
+    project: process.env.GCLOUD_PROJECT,
     location: 'us-central1' // Mantenemos us-central1, es el más seguro
 });
 
 // CAMBIO AQUÍ: Usamos el nombre genérico, sin versiones numéricas
-const model = 'gemini-2.5-flash-lite'; 
+const model = 'gemini-2.5-flash-lite';
 
 const generativeModel = vertex_ai.getGenerativeModel({
     model: model,
@@ -50,11 +83,20 @@ const generativeModel = vertex_ai.getGenerativeModel({
 // =================================================================================
 exports.generateSentence = onCall(async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "Auth required.");
-    
+
+    // --- TIER CHECK ---
+    const userDoc = await admin.firestore().collection('users').doc(request.auth.uid).get();
+    const userData = userDoc.data();
+    if (!userData || userData.tier !== 'premium') {
+        throw new HttpsError("permission-denied", "Plan Premium requerido para acceder a la IA en la nube.");
+    }
+
+    await checkRateLimit(request.auth.uid, "generateSentence");
+
     // Desestructuramos todos los nuevos filtros
-    const { 
-        words, targetLang, tense, grammaticalCase, 
-        sentenceStructure, verbMood, voice, keyword 
+    const {
+        words, targetLang, tense, grammaticalCase,
+        sentenceStructure, verbMood, voice, keyword
     } = request.data;
 
     if (!words || words.length === 0) {
@@ -63,8 +105,8 @@ exports.generateSentence = onCall(async (request) => {
 
     const langName = targetLang === 'DE' ? 'Alemán' : 'Español';
     const targetTranslationLang = targetLang === 'DE' ? 'Español' : 'Alemán';
-    
-    let wordsDetails = words.map(w => 
+
+    let wordsDetails = words.map(w =>
         `"${w.term}" (significado deseado: "${w.translation}", tipo: ${w.type || 'palabra'})`
     ).join(", ");
 
@@ -135,19 +177,19 @@ exports.generateSentence = onCall(async (request) => {
     `;
 
     try {
-        const result = await generativeModel.generateContent({ 
+        const result = await generativeModel.generateContent({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             generation_config: { response_mime_type: "application/json" }
         });
         const response = await result.response;
-        
+
         if (!response.candidates || response.candidates.length === 0) {
             console.error("Error en generateSentence: No se han devuelto candidatos desde el modelo. Razón:", response.promptFeedback);
             throw new HttpsError("internal", "La IA no ha podido generar una respuesta. Esto puede ser debido a los filtros de seguridad internos.");
         }
 
         const jsonText = response.candidates[0].content.parts[0].text.trim();
-        
+
         try {
             const jsonResponse = JSON.parse(jsonText.replace(/```json|```/g, ''));
             return jsonResponse;
@@ -172,6 +214,15 @@ exports.generateSentence = onCall(async (request) => {
 // =================================================================================
 exports.evaluateTranslation = onCall(async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "Auth required.");
+
+    // --- TIER CHECK ---
+    const userDoc = await admin.firestore().collection('users').doc(request.auth.uid).get();
+    const userData = userDoc.data();
+    if (!userData || userData.tier !== 'premium') {
+        throw new HttpsError("permission-denied", "Plan Premium requerido para acceder a la IA en la nube.");
+    }
+
+    await checkRateLimit(request.auth.uid, "evaluateTranslation");
 
     const { originalSentence, userTranslation, idealTranslation, sourceLang, targetLang } = request.data;
 
@@ -210,11 +261,11 @@ exports.evaluateTranslation = onCall(async (request) => {
     `;
 
     try {
-        const result = await generativeModel.generateContent({ 
+        const result = await generativeModel.generateContent({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             generation_config: { response_mime_type: "application/json" }
         });
-        
+
         const response = await result.response;
         const jsonText = response.candidates[0].content.parts[0].text.trim().replace(/```json|```/g, '');
         return JSON.parse(jsonText);
@@ -261,23 +312,4 @@ exports.handleFriendRequest = onCall(async (request) => {
         console.error("Error al procesar la solicitud de amistad:", error);
         throw new HttpsError("internal", "Error al procesar la solicitud.");
     }
-});
-
-// --- Función para desactivar la facturación ---
-exports.stopBilling = onMessagePublished("budget-killswitch-topic", async (event) => {
-    const pubsubMessage = event.data.message;
-    const budgetData = pubsubMessage.json;
-    if (budgetData.costAmount <= budgetData.budgetAmount) { console.log("El coste no ha superado el presupuesto. No se hace nada."); return; }
-    console.log("¡Presupuesto superado! Desactivando la facturación...");
-    const project = await billing.getProjectBillingInfo({ name: process.env.GCLOUD_PROJECT });
-    const projectName = project[0].name;
-    if (!projectName || !project[0].billingEnabled) { console.log("La facturación ya está desactivada."); return; }
-    await billing.updateProjectBillingInfo({ name: projectName, projectBillingInfo: { billingAccountName: "" } });
-    console.log("¡FACTURACIÓN DESACTIVADA!");
-});
-
-// --- Función para calcular las estadísticas diarias ---
-exports.calculateDailyStats = onSchedule("every 24 hours", async (event) => {
-    console.log("calculateDailyStats function is disabled due to performance concerns.");
-    return null;
 });

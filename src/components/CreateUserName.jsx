@@ -37,7 +37,8 @@ function CreateUsername({ user, onProfileCreated }) { // <-- CAMBIO 1: Recibimos
                 uid: user.uid,
                 email: user.email,
                 displayName: username.trim(),
-                displayName_lowercase: username.trim().toLowerCase(), // <-- AÑADE ESTE CAMPO
+                displayName_lowercase: username.trim().toLowerCase(),
+                tier: 'free', // Default tier
                 createdAt: serverTimestamp()
             });
             // <-- CAMBIO 2: Llamamos a la función del padre para que la app se actualice
@@ -71,9 +72,9 @@ function CreateUsername({ user, onProfileCreated }) { // <-- CAMBIO 1: Recibimos
 
                     {error && <p className="text-sm text-center text-red-400">{error}</p>}
 
-                    <button 
-                        type="submit" 
-                        disabled={loading} 
+                    <button
+                        type="submit"
+                        disabled={loading}
                         className="w-full flex justify-center items-center p-3 font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed transition-colors"
                     >
                         {loading && <SpinnerIcon />}

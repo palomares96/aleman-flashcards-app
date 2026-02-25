@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
+import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
 
 // Tu configuración de Firebase que estaba en App.jsx
 const firebaseConfig = {
@@ -18,18 +19,23 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-// --- SAFETY BARRIER: USE EMULATOR ON LOCALHOST ---
-// This automatically connects to the local Firestore emulator if the app is running on localhost.
-// This is a critical safety measure to prevent development work from affecting production data and billing.
-// To use this, you must have the Firebase Emulator Suite running locally.
-// Start it with: `firebase emulators:start`
+// --- SAFETY BARRIER: USE EMULATORS ON LOCALHOST ---
+// Connects to local Firebase Emulators during development to prevent
+// accidental production data access, Cloud Function invocations, and billing.
+// Start emulators with: `firebase emulators:start`
 if (window.location.hostname === 'localhost' && import.meta.env.VITE_USE_EMULATOR === 'true') {
-    console.log("--- DEVELOPMENT MODE ---");
-    console.log("Connecting to Firestore Emulator on localhost:8080");
+    console.log("--- 🛡️ DEVELOPMENT MODE: Using Firebase Emulators ---");
     try {
         connectFirestoreEmulator(db, 'localhost', 8080);
-        console.log("Successfully connected to Firestore Emulator.");
+        console.log("✅ Connected to Firestore Emulator (localhost:8080)");
     } catch (error) {
-        console.error("Error connecting to Firestore Emulator. Make sure the emulators are running via 'firebase emulators:start'.", error);
+        console.error("❌ Firestore Emulator connection failed:", error);
+    }
+    try {
+        const functions = getFunctions(app, "europe-west1");
+        connectFunctionsEmulator(functions, 'localhost', 5001);
+        console.log("✅ Connected to Functions Emulator (localhost:5001)");
+    } catch (error) {
+        console.error("❌ Functions Emulator connection failed:", error);
     }
 }

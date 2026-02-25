@@ -23,112 +23,121 @@ function StatsDashboard({ user }) {
             if (!user) return;
             setLoading(true);
 
-            const maxDaysQuery = new Date();
-            maxDaysQuery.setDate(maxDaysQuery.getDate() - 90); // Fetch max 90 days, as it's the largest timeframe
+            try {
+                const maxDaysQuery = new Date();
+                maxDaysQuery.setDate(maxDaysQuery.getDate() - 90);
 
-            const emptySnap = { docs: [] };
-            const [dailyStatsSnapshot, wordsSnapshot, progressSnapshot] = await Promise.all([
-                getDocs(query(
-                    collection(db, "dailyStats"), 
-                    where("userId", "==", user.uid), 
-                    where("date", ">=", maxDaysQuery),
-                    orderBy("date", "asc")
-                )),
-                Promise.resolve(emptySnap), // Was: getDocs(collection(db, `users/${user.uid}/words`))
-                Promise.resolve(emptySnap)  // Was: getDocs(collection(db, `users/${user.uid}/progress`))
-            ]);
+                const emptySnap = { docs: [] };
+                const [dailyStatsSnapshot, wordsSnapshot, progressSnapshot] = await Promise.all([
+                    getDocs(query(
+                        collection(db, "dailyStats"),
+                        where("userId", "==", user.uid),
+                        where("date", ">=", maxDaysQuery),
+                        orderBy("date", "asc")
+                    )).catch(err => {
+                        console.error("Error fetching dailyStats:", err);
+                        return emptySnap;
+                    }),
+                    getDocs(collection(db, `users/${user.uid}/words`)).catch(err => {
+                        console.error("Error fetching words:", err);
+                        return emptySnap;
+                    }),
+                    getDocs(collection(db, `users/${user.uid}/progress`)).catch(err => {
+                        console.error("Error fetching progress:", err);
+                        return emptySnap;
+                    })
+                ]);
 
-            // 1. Datos Históricos (Gráfico)
-            const today = new Date();
-            const startDate = new Date();
-            startDate.setDate(today.getDate() - timeframe);
-            
-            const dailyData = dailyStatsSnapshot.docs
-                .map(doc => doc.data())
-                .filter(data => data.date && data.date.toDate() >= startDate)
-                .map(data => ({
-                    label: data.date.toDate().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }),
-                    value: data.masteredCount
-                }));
+                // 1. Datos Históricos (Gráfico)
+                const today = new Date();
+                const startDate = new Date();
+                startDate.setDate(today.getDate() - timeframe);
 
-            // 2. Cálculo en Tiempo Real (Vocabulario y Tipos)
-            let totalPlayableWords = 0;
-            const wordTypeMap = new Map();
-            
-            wordsSnapshot.forEach(doc => {
-                const w = doc.data();
-                const baseId = doc.id;
-                
-                wordTypeMap.set(baseId, w.type);
-                totalPlayableWords++;
+                const dailyData = dailyStatsSnapshot.docs
+                    .map(doc => doc.data())
+                    .filter(data => data.date && data.date.toDate() >= startDate)
+                    .map(data => ({
+                        label: data.date.toDate().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }),
+                        value: data.masteredCount
+                    }));
 
-                if (w.type === 'verb' && w.attributes?.separablePrefixes) {
-                    w.attributes.separablePrefixes.forEach(p => {
-                        const derivedId = `${baseId}_${p.prefix}`;
-                        wordTypeMap.set(derivedId, 'verb'); 
-                        totalPlayableWords++;
-                    });
-                }
-            });
+                // 2. Cálculo en Tiempo Real (Vocabulario y Tipos)
+                let totalPlayableWords = 0;
+                const wordTypeMap = new Map();
 
-            // 3. Cálculo de Dominadas (TOTAL EN TIEMPO REAL)
-            let liveMasteredTotal = 0;
-            const masteredByTypeCounters = { noun: 0, verb: 0, adjective: 0, preposition: 0, Otros: 0 };
-            const mainTypes = ['noun', 'verb', 'adjective', 'preposition'];
+                wordsSnapshot.forEach(doc => {
+                    const w = doc.data();
+                    const baseId = doc.id;
 
-            progressSnapshot.forEach(progressDoc => {
-                const progress = progressDoc.data();
-                const wordId = progressDoc.id;
+                    wordTypeMap.set(baseId, w.type);
+                    totalPlayableWords++;
 
-                const totalPlays = (progress.correct || 0) + (progress.incorrect || 0);
-                const errorRate = totalPlays > 0 ? (progress.incorrect || 0) / totalPlays : 0;
-                const isMastered = (totalPlays >= MASTERY_CRITERIA.MIN_PLAYS && errorRate < MASTERY_CRITERIA.MAX_ERROR_RATE) || (progress.correctStreak || 0) >= MASTERY_CRITERIA.STREAK_NEEDED;
-
-                if (isMastered) {
-                    liveMasteredTotal++;
-                    // Intentamos resolver el tipo por ID directo; si no existe, intentamos por baseId (antes_del_prefijo)
-                    let wordType = wordTypeMap.get(wordId);
-                    if (!wordType && wordId && wordId.includes('_')) {
-                        const baseId = wordId.split('_')[0];
-                        wordType = wordTypeMap.get(baseId);
+                    if (w.type === 'verb' && w.attributes?.separablePrefixes) {
+                        w.attributes.separablePrefixes.forEach(p => {
+                            const derivedId = `${baseId}_${p.prefix}`;
+                            wordTypeMap.set(derivedId, 'verb');
+                            totalPlayableWords++;
+                        });
                     }
-                    // Normalizar a minúsculas para comparar con mainTypes
-                    if (wordType) wordType = String(wordType).toLowerCase();
+                });
 
-                    if (wordType && mainTypes.includes(wordType)) {
-                        masteredByTypeCounters[wordType]++;
-                    } else {
-                        masteredByTypeCounters.Otros++;
+                // 3. Cálculo de Dominadas (TOTAL EN TIEMPO REAL)
+                let liveMasteredTotal = 0;
+                const masteredByTypeCounters = { noun: 0, verb: 0, adjective: 0, preposition: 0, Otros: 0 };
+                const mainTypes = ['noun', 'verb', 'adjective', 'preposition'];
+
+                progressSnapshot.forEach(progressDoc => {
+                    const progress = progressDoc.data();
+                    const wordId = progressDoc.id;
+
+                    const totalPlays = (progress.correct || 0) + (progress.incorrect || 0);
+                    const errorRate = totalPlays > 0 ? (progress.incorrect || 0) / totalPlays : 0;
+                    const isMastered = (totalPlays >= MASTERY_CRITERIA.MIN_PLAYS && errorRate < MASTERY_CRITERIA.MAX_ERROR_RATE) || (progress.correctStreak || 0) >= MASTERY_CRITERIA.STREAK_NEEDED;
+
+                    if (isMastered) {
+                        liveMasteredTotal++;
+                        let wordType = wordTypeMap.get(wordId);
+                        if (!wordType && wordId && wordId.includes('_')) {
+                            const baseId = wordId.split('_')[0];
+                            wordType = wordTypeMap.get(baseId);
+                        }
+                        if (wordType) wordType = String(wordType).toLowerCase();
+
+                        if (wordType && mainTypes.includes(wordType)) {
+                            masteredByTypeCounters[wordType]++;
+                        } else {
+                            masteredByTypeCounters.Otros++;
+                        }
                     }
-                }
-            });
-            
-            // 4. Cálculo de "Dominadas Hoy" (Delta)
-            // Tomamos el último valor registrado por el sistema (ayer noche)
-            const lastRecordedTotal = dailyData.length > 0 ? dailyData[dailyData.length - 1].value : 0;
-            // La diferencia es lo que has conseguido hoy
-            const masteredToday = Math.max(0, liveMasteredTotal - lastRecordedTotal);
+                });
 
-            const masteredByType = Object.entries(masteredByTypeCounters).map(([name, value]) => ({ name, value }));
-            
-            setStats({
-                dailyData,
-                kpis: { 
-                    totalWords: totalPlayableWords, 
-                    masteredToday: masteredToday, // Ahora es un delta real
-                    masteredTotal: liveMasteredTotal // Ahora es tiempo real
-                },
-                masteredByType
-            });
+                // 4. Cálculo de "Dominadas Hoy" (Delta)
+                const lastRecordedTotal = dailyData.length > 0 ? dailyData[dailyData.length - 1].value : 0;
+                const masteredToday = Math.max(0, liveMasteredTotal - lastRecordedTotal);
 
-            setLoading(false);
+                const masteredByType = Object.entries(masteredByTypeCounters).map(([name, value]) => ({ name, value }));
+
+                setStats({
+                    dailyData,
+                    kpis: {
+                        totalWords: totalPlayableWords,
+                        masteredToday: masteredToday,
+                        masteredTotal: liveMasteredTotal
+                    },
+                    masteredByType
+                });
+            } catch (err) {
+                console.error("Error loading statistics:", err);
+            } finally {
+                setLoading(false);
+            }
         };
 
         fetchStats();
     }, [user, timeframe]);
 
     if (loading) return <div className="p-10 text-center">Cargando estadísticas...</div>;
-    
+
     const lineChartOptions = {
         responsive: true,
         maintainAspectRatio: false,
@@ -147,8 +156,8 @@ function StatsDashboard({ user }) {
     const typeTranslations = { noun: 'Sust.', verb: 'Verbos', adjective: 'Adj.', preposition: 'Prep.', Otros: 'Otros' };
     const typeColors = { noun: '#3b82f6', verb: '#ec4899', adjective: '#f59e0b', preposition: '#22c55e', Otros: '#6b7280' };
 
-    const StatCard = ({ title, value, subtext }) => ( <div className="bg-gray-800 p-6 rounded-lg text-center sm:text-left"><h3 className="text-sm font-medium text-gray-400">{title}</h3><p className="text-3xl font-bold mt-2">{value}</p>{subtext && <p className="text-xs text-gray-500 mt-1">{subtext}</p>}</div> );
-    const TimeframeButton = ({ days, children }) => ( <button onClick={() => setTimeframe(days)} className={`px-3 py-1 text-xs rounded-full ${timeframe === days ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>{children}</button> );
+    const StatCard = ({ title, value, subtext }) => (<div className="bg-gray-800 p-6 rounded-lg text-center sm:text-left"><h3 className="text-sm font-medium text-gray-400">{title}</h3><p className="text-3xl font-bold mt-2">{value}</p>{subtext && <p className="text-xs text-gray-500 mt-1">{subtext}</p>}</div>);
+    const TimeframeButton = ({ days, children }) => (<button onClick={() => setTimeframe(days)} className={`px-3 py-1 text-xs rounded-full ${timeframe === days ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>{children}</button>);
 
     return (
         <div className="w-full max-w-4xl mx-auto">

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { auth } from '../firebase.js'; // Ajusta la ruta
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signInWithCredential } from "firebase/auth";
+import { Capacitor } from '@capacitor/core';
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 
 // =================================================================================
 // COMPONENTE NUEVO: Pantalla de Login
@@ -32,11 +34,22 @@ function Login() {
 
     const handleGoogleSignIn = async () => {
         setError('');
-        const provider = new GoogleAuthProvider();
         try {
-            await signInWithPopup(auth, provider);
+            console.log('Platform detected:', Capacitor.getPlatform());
+            if (Capacitor.isNativePlatform()) {
+                console.log('Starting native Google Sign-In...');
+                const result = await FirebaseAuthentication.signInWithGoogle();
+                console.log('Native sign-in successful, credential received.');
+                const credential = GoogleAuthProvider.credential(result.credential.idToken);
+                await signInWithCredential(auth, credential);
+            } else {
+                console.log('Starting web Google Sign-In...');
+                const provider = new GoogleAuthProvider();
+                await signInWithPopup(auth, provider);
+            }
         } catch (err) {
-            setError('Failed to sign in with Google.');
+            console.error('Google Sign-In Error:', err);
+            setError(`Failed to sign in with Google: ${err.message}`);
         }
     };
 
@@ -48,15 +61,15 @@ function Login() {
                     <p className="text-sm text-center text-gray-400">Accede a tus flashcards</p>
                 </div>
                 <form className="space-y-4">
-                    <input 
-                        type="email" 
+                    <input
+                        type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="Email"
                         className="w-full px-4 py-2 text-white bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
-                    <input 
-                        type="password" 
+                    <input
+                        type="password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="Contraseña"
@@ -64,8 +77,8 @@ function Login() {
                     />
                     {error && <p className="text-xs text-center text-red-400">{error}</p>}
                     <div className="flex gap-2">
-                         <button onClick={handleSignIn} className="w-full py-2 font-bold text-white bg-blue-600 rounded-md hover:bg-blue-70d00">Entrar</button>
-                         <button onClick={handleSignUp} className="w-full py-2 font-semibold text-blue-300 bg-blue-900/50 rounded-md hover:bg-blue-900/80">Registrar</button>
+                        <button onClick={handleSignIn} className="w-full py-2 font-bold text-white bg-blue-600 rounded-md hover:bg-blue-70d00">Entrar</button>
+                        <button onClick={handleSignUp} className="w-full py-2 font-semibold text-blue-300 bg-blue-900/50 rounded-md hover:bg-blue-900/80">Registrar</button>
                     </div>
                 </form>
                 <div className="relative">

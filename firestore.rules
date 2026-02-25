@@ -24,11 +24,21 @@ service cloud.firestore {
       match /progress/{wordId} {
         allow read, write: if isOwner(userId);
       }
-    }
-    
-    // Prevent listing all users
-    match /users/{document=**} {
-        allow list: if false;
+
+      // Words subcollection
+      match /words/{wordId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Sentence attempts subcollection
+      match /sentenceAttempts/{attemptId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // User events subcollection
+      match /user_events/{eventId} {
+        allow read, write: if isOwner(userId);
+      }
     }
 
 
@@ -42,6 +52,11 @@ service cloud.firestore {
       allow delete: if isOwner(resource.data.to_uid); // receiver can decline
     }
     
+    // Rate limits - only accessible by Cloud Functions (Admin SDK)
+    match /rateLimits/{docId} {
+        allow read, write: if false;
+    }
+
     // Daily stats can only be read by the user they belong to.
     // They are written by a cloud function.
     match /dailyStats/{statId} {
@@ -49,6 +64,11 @@ service cloud.firestore {
         allow write: if false; // Only backend can write
     }
     
+    // Categories are shared and can be read and created by any authenticated user.
+    match /categories/{categoryId} {
+      allow read, create: if request.auth != null;
+    }
+
     // Default deny all other reads/writes
     match /{document=**} {
       allow read, write: if false;

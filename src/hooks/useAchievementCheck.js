@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { db } from '../firebase.js';
-import { collection, getDocs, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, setDoc, serverTimestamp, query, where, orderBy } from 'firebase/firestore';
 import { MASTERY_CRITERIA } from '../config.js';
 import { useTrophyNotification } from './useGlobalTrophyNotification.js';
 
@@ -173,7 +173,7 @@ export const TROPHIES = [
   { id: 'other_master', category: 'collector', title: 'El Ecléctico', desc: 'Domina 20 palabras de tipo "otro"', icon: '🧩' },
   { id: 'master_all_nouns', category: 'collector', title: 'El Nominador', desc: 'Domina TODOS los sustantivos de tu mazo', icon: '🏆' },
   { id: 'master_all_verbs', category: 'collector', title: 'El Conjugador', desc: 'Domina TODOS los verbos de tu mazo', icon: '🏆' },
-  
+
   // === ESPECIALES ===
   { id: 'prefixes_5', category: 'other', title: 'Prefijador', desc: 'Añade 5 prefijos separables', icon: '⚙️' },
   { id: 'prefixes_50', category: 'other', title: 'Rey de Prefijos', desc: 'Añade 50 prefijos separables', icon: '👑' },
@@ -184,7 +184,7 @@ export const TROPHIES = [
   { id: 'words_add_10000', category: 'words', title: 'Archimago del Léxico', desc: 'Añade 10.000 palabras', icon: '🌌' },
   { id: 'streak_correct_100', category: 'streaks', title: 'Imparable', desc: 'Consigue 100 aciertos seguidos', icon: '🌠' },
   { id: 'streak_daily_60', category: 'streaks', title: 'Hábito de Hierro', desc: 'Mantén una racha de 60 días jugando', icon: '🦾' },
-  
+
   // === MÁS TROFEOS DE FILTROS Y MODO AMIGO ===
   { id: 'sm_keyword_user', category: 'filter_master', title: 'El Específico', desc: 'Juega 10 frases usando una palabra clave.', icon: '🔑' },
   { id: 'sm_kitchen_sink', category: 'filter_master', title: 'El Exigente', desc: 'Juega una frase con 5 o más filtros avanzados activos.', icon: '🤯' },
@@ -193,21 +193,36 @@ export const TROPHIES = [
 
 export function useAchievementCheck(user, onNewTrophy) {
   const { emitTrophy } = useTrophyNotification();
-  
+
   const checkAchievements = useCallback(async () => {
     if (!user) return [];
-    
+
     try {
       // --- SAFETY PATCH ---
       // The following queries have been temporarily disabled to prevent excessive Firestore reads.
       // The entire achievement calculation logic should be moved to a Cloud Function.
       const emptySnap = { docs: [] };
       const [wordsSnap, progressSnap, friendsSnap, sentencesSnap, eventsSnap] = await Promise.all([
-        Promise.resolve(emptySnap), // Was: getDocs(collection(db, `users/${user.uid}/words`))
-        Promise.resolve(emptySnap), // Was: getDocs(collection(db, `users/${user.uid}/progress`))
-        getDocs(collection(db, `users/${user.uid}/friends`)), // Kept for social achievements
-        Promise.resolve(emptySnap), // Was: getDocs(collection(db, `users/${user.uid}/sentenceAttempts`))
-        Promise.resolve(emptySnap)  // Was: getDocs(collection(db, `users/${user.uid}/user_events`))
+        getDocs(collection(db, `users/${user.uid}/words`)).catch(err => {
+          console.error("Error fetching words for achievements:", err);
+          return emptySnap;
+        }),
+        getDocs(collection(db, `users/${user.uid}/progress`)).catch(err => {
+          console.error("Error fetching progress for achievements:", err);
+          return emptySnap;
+        }),
+        getDocs(collection(db, `users/${user.uid}/friends`)).catch(err => {
+          console.error("Error fetching friends for achievements:", err);
+          return emptySnap;
+        }),
+        getDocs(collection(db, `users/${user.uid}/sentenceAttempts`)).catch(err => {
+          console.error("Error fetching sentenceAttempts for achievements:", err);
+          return emptySnap;
+        }),
+        getDocs(collection(db, `users/${user.uid}/user_events`)).catch(err => {
+          console.error("Error fetching user_events for achievements:", err);
+          return emptySnap;
+        })
       ]);
 
       const words = wordsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -234,11 +249,24 @@ export function useAchievementCheck(user, onNewTrophy) {
       const now = new Date();
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(now.getDate() - 7);
-      // --- SAFETY PATCH ---
-      // The following queries have been temporarily disabled to prevent excessive Firestore reads.
-      // This logic should be moved to a Cloud Function.
-      const recentDaily = [];
-      const allDailyStats = [];
+
+      // Fetch dailyStats for day-based achievements
+      let allDailyStats = [];
+      let recentDaily = [];
+      try {
+        const dailyStatsSnap = await getDocs(query(
+          collection(db, "dailyStats"),
+          where("userId", "==", user.uid),
+          orderBy("date", "asc")
+        ));
+        allDailyStats = dailyStatsSnap.docs.map(d => {
+          const data = d.data();
+          return { date: data.date?.toDate?.() || new Date(data.date) };
+        });
+        recentDaily = allDailyStats.filter(d => d.date >= sevenDaysAgo);
+      } catch (err) {
+        console.error("Error fetching dailyStats for achievements:", err);
+      }
 
       let longestStreak = 0;
       let currentStreak = 1;
@@ -246,7 +274,7 @@ export function useAchievementCheck(user, onNewTrophy) {
         const prevDate = new Date(allDailyStats[i - 1].date);
         const currDate = new Date(allDailyStats[i].date);
         const diffDays = Math.floor((currDate - prevDate) / (1000 * 60 * 60 * 24));
-        
+
         if (diffDays === 1) {
           currentStreak++;
         } else if (diffDays > 1) {
@@ -280,16 +308,16 @@ export function useAchievementCheck(user, onNewTrophy) {
       const masteredWordsByType = { noun: 0, verb: 0, adjective: 0, preposition: 0, other: 0 };
       const totalWordsByType = { noun: 0, verb: 0, adjective: 0, preposition: 0, other: 0 };
       words.forEach(w => {
-          totalWordsByType[w.type]++;
-          const p = progress.find(pr => pr.id === w.id.split('_')[0]);
-          if (p) {
-              const totalPlays = (p.correct || 0) + (p.incorrect || 0);
-              const errorRate = totalPlays > 0 ? (p.incorrect || 0) / totalPlays : 0;
-              const isMastered = (totalPlays >= MASTERY_CRITERIA.MIN_PLAYS && errorRate < MASTERY_CRITERIA.MAX_ERROR_RATE) || (p.correctStreak || 0) >= MASTERY_CRITERIA.STREAK_NEEDED;
-              if (isMastered) {
-                  masteredWordsByType[w.type]++;
-              }
+        totalWordsByType[w.type]++;
+        const p = progress.find(pr => pr.id === w.id.split('_')[0]);
+        if (p) {
+          const totalPlays = (p.correct || 0) + (p.incorrect || 0);
+          const errorRate = totalPlays > 0 ? (p.incorrect || 0) / totalPlays : 0;
+          const isMastered = (totalPlays >= MASTERY_CRITERIA.MIN_PLAYS && errorRate < MASTERY_CRITERIA.MAX_ERROR_RATE) || (p.correctStreak || 0) >= MASTERY_CRITERIA.STREAK_NEEDED;
+          if (isMastered) {
+            masteredWordsByType[w.type]++;
           }
+        }
       });
       const friendModePlays = events.filter(e => e.type === 'correct_answer_with_filters' && e.filters?.friendPlay).length;
 
@@ -297,39 +325,39 @@ export function useAchievementCheck(user, onNewTrophy) {
       const checks = {
         // === Filtros (NUEVO) ===
         sm_tense_explorer: () => {
-            const tensesUsed = new Set(sentences.map(s => s.tense));
-            return tensesUsed.has('Präsens') && (tensesUsed.has('Präteritum') || tensesUsed.has('Perfekt')) && tensesUsed.has('Futur I');
+          const tensesUsed = new Set(sentences.map(s => s.tense));
+          return tensesUsed.has('Präsens') && (tensesUsed.has('Präteritum') || tensesUsed.has('Perfekt')) && tensesUsed.has('Futur I');
         },
         sm_case_explorer: () => {
-            const casesUsed = new Set(sentences.map(s => s.grammaticalCase));
-            return casesUsed.has('acusativo') && casesUsed.has('dativo') && casesUsed.has('genitivo');
+          const casesUsed = new Set(sentences.map(s => s.grammaticalCase));
+          return casesUsed.has('acusativo') && casesUsed.has('dativo') && casesUsed.has('genitivo');
         },
         sm_structure_explorer: () => {
-            const structuresUsed = new Set(sentences.map(s => s.sentenceStructure));
-            return structuresUsed.has('Hauptsatz') && structuresUsed.has('Nebensatz') && structuresUsed.has('Relativsatz');
+          const structuresUsed = new Set(sentences.map(s => s.sentenceStructure));
+          return structuresUsed.has('Hauptsatz') && structuresUsed.has('Nebensatz') && structuresUsed.has('Relativsatz');
         },
         sm_advanced_explorer: () => {
-            const moodsUsed = new Set(sentences.map(s => s.verbMood));
-            const voicesUsed = new Set(sentences.map(s => s.voice));
-            return moodsUsed.has('Konjunktiv II') && moodsUsed.has('Imperativ') && voicesUsed.has('Passiv');
+          const moodsUsed = new Set(sentences.map(s => s.verbMood));
+          const voicesUsed = new Set(sentences.map(s => s.voice));
+          return moodsUsed.has('Konjunktiv II') && moodsUsed.has('Imperativ') && voicesUsed.has('Passiv');
         },
         gm_picky_learner: () => {
-            const count = events.filter(e => e.type === 'correct_answer_with_filters' && e.filters?.difficulty).length;
-            return count >= 20;
+          const count = events.filter(e => e.type === 'correct_answer_with_filters' && e.filters?.difficulty).length;
+          return count >= 20;
         },
         gm_category_specialist: () => {
-            const count = events.filter(e => e.type === 'correct_answer_with_filters' && e.filters?.categoryId).length;
-            return count >= 20;
+          const count = events.filter(e => e.type === 'correct_answer_with_filters' && e.filters?.categoryId).length;
+          return count >= 20;
         },
         sm_keyword_user: () => sentences.filter(s => s.keyword && s.keyword.trim() !== '').length >= 10,
         sm_kitchen_sink: () => sentences.some(s => {
-            let activeFilters = 0;
-            if (s.tense !== 'any') activeFilters++;
-            if (s.grammaticalCase !== 'any') activeFilters++;
-            if (s.sentenceStructure !== 'any') activeFilters++;
-            if (s.verbMood !== 'any') activeFilters++;
-            if (s.voice !== 'any') activeFilters++;
-            return activeFilters >= 5;
+          let activeFilters = 0;
+          if (s.tense !== 'any') activeFilters++;
+          if (s.grammaticalCase !== 'any') activeFilters++;
+          if (s.sentenceStructure !== 'any') activeFilters++;
+          if (s.verbMood !== 'any') activeFilters++;
+          if (s.voice !== 'any') activeFilters++;
+          return activeFilters >= 5;
         }),
         friend_mode_pro: () => friendModePlays >= 100,
 
@@ -345,7 +373,7 @@ export function useAchievementCheck(user, onNewTrophy) {
         bibliotecario_7: () => ownWords.length >= 2000,
         wortmeister: () => ownWords.length >= 2500,
         words_add_10000: () => ownWords.length >= 10000,
-        
+
         // Maestría
         first_master: () => masteredCount >= 1,
         aprendiz_5: () => masteredCount >= 5,
@@ -359,7 +387,7 @@ export function useAchievementCheck(user, onNewTrophy) {
         sprachmeister: () => masteredCount >= 1500,
         maestro_2000: () => masteredCount >= 2000,
         maestro_3000: () => masteredCount >= 3000,
-        
+
         // Rachas de días
         daily_7: () => recentDaily.length >= 7,
         daily_14: () => recentDaily.length >= 14,
@@ -378,7 +406,7 @@ export function useAchievementCheck(user, onNewTrophy) {
         friend_1: () => friends.length >= 1,
         friend_5: () => friends.length >= 5,
         friend_10: () => friends.length >= 10,
-        
+
         // Prefijos
         prefixes_5: () => totalPrefixes >= 5,
         prefixes_50: () => totalPrefixes >= 50,
@@ -391,12 +419,12 @@ export function useAchievementCheck(user, onNewTrophy) {
         sentences_250: () => sentences.length >= 250,
         good_sentences_5: () => sentenceStreak >= 5,
         good_sentences_10: () => sentenceStreak >= 10,
-        
+
         // Palabras extra
         bibliotecario_8: () => words.length >= 3000,
         bibliotecario_9: () => words.length >= 4000,
         bibliotecario_maestro: () => words.length >= 5000,
-        
+
         // Explorador - Aciertos y palabras jugadas
         correct_50: () => progress.reduce((sum, p) => sum + (p.correct || 0), 0) >= 50,
         correct_100: () => progress.reduce((sum, p) => sum + (p.correct || 0), 0) >= 100,
@@ -406,14 +434,14 @@ export function useAchievementCheck(user, onNewTrophy) {
         played_200: () => progress.reduce((sum, p) => sum + ((p.correct || 0) + (p.incorrect || 0)), 0) >= 200,
         sentence_scholar: () => sentences.length >= 50,
         versatile_learner: () => true, // Placeholder
-        
+
         // Dedicación
         day_3: () => allDailyStats.length >= 3,
         day_10: () => allDailyStats.length >= 10,
         day_30: () => allDailyStats.length >= 30,
         day_100: () => allDailyStats.length >= 100,
         marathon: () => longestStreak >= 100,
-        
+
         // Perfeccionista
         perfect_start: () => true, // Placeholder
         perfect_game: () => true, // Placeholder
@@ -434,7 +462,7 @@ export function useAchievementCheck(user, onNewTrophy) {
         other_master: () => masteredWordsByType.other >= 20,
         master_all_nouns: () => totalWordsByType.noun > 0 && masteredWordsByType.noun === totalWordsByType.noun,
         master_all_verbs: () => totalWordsByType.verb > 0 && masteredWordsByType.verb === totalWordsByType.verb,
-        
+
         // Especiales
         first_month: () => allDailyStats.length >= 30,
         trilingual_ambition: () => true // Placeholder
@@ -451,13 +479,13 @@ export function useAchievementCheck(user, onNewTrophy) {
 
       // IMPORTANTE: Actualizar SIEMPRE en Firebase, incluso si no hay nuevos
       const unlockedArray = Array.from(currentUnlocked);
-      await setDoc(userDocRef, { 
-        achievements: { 
-          unlocked: unlockedArray, 
-          updatedAt: serverTimestamp() 
-        } 
+      await setDoc(userDocRef, {
+        achievements: {
+          unlocked: unlockedArray,
+          updatedAt: serverTimestamp()
+        }
       }, { merge: true });
-      
+
       // Notificar los nuevos desbloqueados - TANTO al callback como globalmente
       if (newlyUnlocked.length > 0) {
         newlyUnlocked.forEach(t => {
@@ -467,7 +495,7 @@ export function useAchievementCheck(user, onNewTrophy) {
           emitTrophy(t);
         });
       }
-      
+
       // RETORNAR SIEMPRE la lista completa de desbloqueados
       return unlockedArray;
     } catch (err) {
