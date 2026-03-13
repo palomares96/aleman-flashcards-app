@@ -35,7 +35,7 @@ const AchievementsIcon = ({ active }) => (
     </svg>
 );
 
-function AppLayout({ user, userProfile }) {
+function AppLayout({ user, userProfile, onShowPrivacy }) {
     const [view, setView] = useState('game');
     const [banner, setBanner] = useState(null);
     const { subscribe } = useTrophyNotification();
@@ -103,8 +103,14 @@ function AppLayout({ user, userProfile }) {
                         </button>
                     ))}
                 </nav>
-                <div className="px-3 pt-4 border-t border-white/10">
-                    <p className="text-[10px] text-gray-600 font-medium">© 2026 Aleman App</p>
+                <div className="px-3 pt-4 border-t border-white/10 flex flex-col gap-1">
+                    <p className="text-[10px] text-gray-600 font-medium whitespace-nowrap">© 2026 Aleman App</p>
+                    <button 
+                        onClick={onShowPrivacy}
+                        className="text-left text-[10px] text-gray-500 hover:text-gray-300 transition-colors"
+                    >
+                        Política de Privacidad
+                    </button>
                 </div>
             </aside>
 

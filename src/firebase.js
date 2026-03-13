@@ -23,7 +23,8 @@ export const db = getFirestore(app);
 // Connects to local Firebase Emulators during development to prevent
 // accidental production data access, Cloud Function invocations, and billing.
 // Start emulators with: `firebase emulators:start`
-if (window.location.hostname === 'localhost' && import.meta.env.VITE_USE_EMULATOR === 'true') {
+const isNativePlatform = !!window.Capacitor;
+if (!isNativePlatform && window.location.hostname === 'localhost' && import.meta.env.VITE_USE_EMULATOR === 'true') {
     console.log("--- 🛡️ DEVELOPMENT MODE: Using Firebase Emulators ---");
     try {
         connectFirestoreEmulator(db, 'localhost', 8080);

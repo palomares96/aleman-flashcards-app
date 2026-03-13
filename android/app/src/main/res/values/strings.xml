@@ -5,4 +5,6 @@
     <string name="package_name">com.aleman.flashcards</string>
     <string name="custom_url_scheme">com.aleman.flashcards</string>
     <string name="server_client_id">250038580123-cbpiopd1pkrdln1rm5uttofl7fackopo.apps.googleusercontent.com</string>
+    <string name="default_web_client_id">250038580123-cbpiopd1pkrdln1rm5uttofl7fackopo.apps.googleusercontent.com</string>
+    <string name="common_google_play_services_unknown_issue">Google Sign-In requires a Google Account</string>
 </resources>
