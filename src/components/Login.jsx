@@ -7,7 +7,7 @@ import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 // =================================================================================
 // COMPONENTE NUEVO: Pantalla de Login
 // =================================================================================
-function Login() {
+function Login({ onShowPrivacy }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');

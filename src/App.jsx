@@ -25,9 +25,19 @@ if (!currentUser) {
 setUserProfile(null);
 return;
  }
+try {
 const userDocRef = doc(db, "users", currentUser.uid);
 const userDocSnap = await getDoc(userDocRef);
-setUserProfile(userDocSnap.exists() ? userDocSnap.data() : null);
+if (userDocSnap.exists()) {
+setUserProfile(userDocSnap.data());
+} else {
+setUserProfile(prev => prev ?? null);
+}
+} catch (err) {
+console.error("Error al leer el perfil del usuario:", err);
+// No sobreescribimos un perfil ya cargado por un error transitorio de red.
+setUserProfile(prev => prev ?? null);
+}
 };
 
 useEffect(() => {
@@ -48,7 +58,7 @@ return <div className="flex items-center justify-center h-screen bg-gray-900 tex
   }
 
   if (user && !userProfile) {
-    return <CreateUsername user={user} onProfileCreated={() => fetchUserProfile(user)} />;
+    return <CreateUsername user={user} onProfileCreated={(profileData) => setUserProfile(profileData)} />;
   }
 
   return user && userProfile ?

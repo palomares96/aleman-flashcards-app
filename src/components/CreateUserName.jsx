@@ -15,38 +15,45 @@ function CreateUsername({ user, onProfileCreated }) { // <-- CAMBIO 1: Recibimos
         setLoading(true);
         setError('');
 
-        if (username.length < 3) {
+        const trimmedName = username.trim();
+
+        if (trimmedName.length < 3) {
             setError("El nombre debe tener al menos 3 caracteres.");
             setLoading(false);
             return;
         }
 
-        const usersRef = collection(db, "users");
-        const q = query(usersRef, where("displayName", "==", username.trim()), limit(1));
-        const querySnapshot = await getDocs(q);
-
-        if (!querySnapshot.empty) {
-            setError("Este nombre de usuario ya está en uso. Elige otro.");
-            setLoading(false);
-            return;
-        }
-
         try {
-            const userDocRef = doc(db, "users", user.uid);
-            await setDoc(userDocRef, {
+            const usersRef = collection(db, "users");
+            const q = query(usersRef, where("displayName", "==", trimmedName), limit(1));
+            const querySnapshot = await getDocs(q);
+
+            if (!querySnapshot.empty) {
+                setError("Este nombre de usuario ya está en uso. Elige otro.");
+                setLoading(false);
+                return;
+            }
+
+            const profileData = {
                 uid: user.uid,
                 email: user.email,
-                displayName: username.trim(),
-                displayName_lowercase: username.trim().toLowerCase(),
-                tier: 'free', // Default tier
+                displayName: trimmedName,
+                displayName_lowercase: trimmedName.toLowerCase(),
+                tier: 'free',
                 createdAt: serverTimestamp()
-            });
-            // <-- CAMBIO 2: Llamamos a la función del padre para que la app se actualice
-            onProfileCreated();
+            };
+
+            const userDocRef = doc(db, "users", user.uid);
+            await setDoc(userDocRef, profileData);
+
+            // Pasamos el perfil directamente al padre para evitar una re-lectura
+            // de Firestore que podía devolver datos sin sincronizar y dejar al
+            // usuario atrapado en esta pantalla.
+            onProfileCreated({ ...profileData, createdAt: new Date() });
         } catch (err) {
-            setError("No se pudo guardar el nombre de usuario. Inténtalo de nuevo.");
             console.error(err);
-            setLoading(false); // <-- CAMBIO 3: Aseguramos parar la carga en caso de error
+            setError("No se pudo guardar el nombre de usuario. Inténtalo de nuevo.");
+            setLoading(false);
         }
     };
 
