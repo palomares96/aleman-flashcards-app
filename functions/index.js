@@ -56,18 +56,16 @@ async function checkRateLimit(userId, functionName) {
 // NOTA: La clave de API ahora se accederá directamente a través de process.env más adelante
 const vertex_ai = new VertexAI({
     project: process.env.GCLOUD_PROJECT,
-    location: 'us-central1' // Mantenemos us-central1, es el más seguro
+    location: 'eu'
 });
 
-// CAMBIO AQUÍ: Usamos el nombre genérico, sin versiones numéricas
-const model = 'gemini-2.5-flash-lite';
+// Modelo Flash estable recomendado por Google para producción.
+const model = 'gemini-3.7-flash';
 
 const generativeModel = vertex_ai.getGenerativeModel({
     model: model,
     generation_config: {
         "max_output_tokens": 2048,
-        "temperature": 0.7,
-        "top_p": 1,
     },
     // Settings de seguridad opcionales pero recomendados
     safety_settings: [
