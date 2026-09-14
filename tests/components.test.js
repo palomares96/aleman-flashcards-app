@@ -12,7 +12,11 @@ import { pathToFileURL } from 'node:url';
 const adapter = `
 export const db = {};
 export const auth = { currentUser: { uid: 'test' } };
-export const state = { writes: [], rows: [], beforeTransaction: null };
+export const state = { writes: [], rows: [], records: {}, beforeTransaction: null, aiCalls: [], failSave: false };
+export const aiService = { generateSentence: async data => { state.aiCalls.push({ kind: 'generate', data }); return { sentence: 'Ich [verb|stelle] die Flasche auf den Tisch.', idealTranslation: 'Pongo la botella de pie sobre la mesa.', provider: 'local' }; }, evaluateTranslation: async data => { state.aiCalls.push({ kind: 'evaluate', data }); return { score: 10, feedback: 'Correcto.', betterTranslation: data.idealTranslation }; } };
+export const functions = {};
+export const getDoc = async ref => ({ exists: () => !!state.records[ref.path], data: () => state.records[ref.path] });
+export const getDocFromServer = getDoc;
 export const collection = (db, path) => ({ path });
 export const doc = (db, ...parts) => ({ path: parts.join('/'), id: parts.at(-1) });
 export const query = (ref, ...constraints) => ({ ...ref, constraints });
@@ -34,18 +38,20 @@ export const getDocs = async ref => {
   const docs = rows.map(row => ({ id: row.id, data: () => structuredClone(row) }));
   return { docs, size: docs.length, empty: !docs.length, forEach: fn => docs.forEach(fn) };
 };
+export const getDocsFromServer = getDocs;
 export const addDoc = async (ref, data) => { state.writes.push({ ref, data }); return { id: 'new' }; };
-export const setDoc = async (ref, data) => { state.writes.push({ ref, data }); };
+export const setDoc = async (ref, data) => { if (state.failSave) throw new Error('network unavailable'); state.records[ref.path] = structuredClone(data); state.writes.push({ ref, data }); };
 export const updateDoc = async (ref, data) => { state.writes.push({ ref, data }); };
 export const deleteDoc = async () => {};
 export const useAchievementCheck = () => () => {};
 export const runTransaction = async (db, callback) => {
   if (state.beforeTransaction) { state.beforeTransaction(); state.beforeTransaction = null; }
   return callback({
-    get: async ref => { const row = state.rows.find(row => row.id === ref.id); return { exists: () => !!row, data: () => structuredClone(row) }; },
+    set: (ref, data) => { state.records[ref.path] = structuredClone(data); state.writes.push({ ref, data }); },
+    get: async ref => { const row = ref.path.includes('/words/') ? state.rows.find(row => row.id === ref.id) : state.records[ref.path]; return { exists: () => !!row, data: () => structuredClone(row) }; },
     update: (ref, patch) => {
       state.writes.push({ ref, data: patch });
-      const row = state.rows.find(row => row.id === ref.id);
+      const row = ref.path.includes('/words/') ? state.rows.find(row => row.id === ref.id) : (state.records[ref.path] ||= {});
       for (const [key, value] of Object.entries(patch)) {
         if (key.startsWith('attributes.')) { row.attributes ||= {}; row.attributes[key.slice(11)] = value; }
         else row[key] = value;
@@ -59,15 +65,18 @@ const built = await build({
   stdin: { contents: `
     export { createElement, act } from 'react';
     export { createRoot } from 'react-dom/client';
+    export { default as Achievements } from './src/components/Achievements.jsx';
+    export { default as SentenceMode } from './src/components/SentenceMode.jsx';
     export { default as Game } from './src/components/Game.jsx';
     export { default as WordForm } from './src/components/WordForm.jsx';
     export { default as VocabularyManager } from './src/components/VocabularyManager.jsx';
     export { backfillOwnVocabulary } from './src/services/vocabularyMigration.js';
+    export { clearStudyMemory } from './src/services/studyStore.js';
     export { state, auth } from 'firebase/firestore';
   `, resolveDir: process.cwd(), loader: 'js' },
   bundle: true, format: 'esm', platform: 'browser', write: false,
   plugins: [{ name: 'in-memory-firebase', setup(plugin) {
-    plugin.onResolve({ filter: /firebase\/firestore$|\/firebase\.js$|\/useAchievementCheck\.js$/ }, () => ({ path: 'adapter', namespace: 'test' }));
+    plugin.onResolve({ filter: /firebase\/firestore$|\/firebase\.js$|\/aiService(?:\.js)?$/ }, () => ({ path: 'adapter', namespace: 'test' }));
     plugin.onLoad({ filter: /.*/, namespace: 'test' }, () => ({ contents: adapter, loader: 'js' }));
   } }],
 });
@@ -75,6 +84,8 @@ const built = await build({
 const dom = new JSDOM('<div id="root"></div>', { url: 'https://example.test/' });
 globalThis.window = dom.window;
 globalThis.document = dom.window.document;
+globalThis.localStorage = dom.window.localStorage;
+globalThis.Event = dom.window.Event;
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // React act needs a task queue; use timers to avoid retaining native MessagePorts.
 const NativeMessageChannel = globalThis.MessageChannel;
@@ -101,7 +112,8 @@ const setValue = async (selector, value) => {
   });
 };
 async function mount(Component) {
-  ui.state.rows = [baseWord()]; ui.state.writes = [];
+  ui.clearStudyMemory('test'); localStorage.clear();
+  ui.state.rows = [baseWord()]; ui.state.writes = []; ui.state.records = {}; ui.state.aiCalls = []; ui.state.failSave = false;
   const root = ui.createRoot(container());
   await ui.act(async () => root.render(ui.createElement(Component, { user: { uid: 'test' } })));
   return async () => ui.act(async () => root.unmount());
@@ -167,7 +179,8 @@ test('backfill pages through the full deck and is idempotent on a second run', a
 });
 
 test('backfill preserves a concurrent custom note, skips deletion, and stops after sign-out', async () => {
-  ui.state.rows = [baseWord()]; ui.state.writes = [];
+  ui.clearStudyMemory('test'); localStorage.clear();
+  ui.state.rows = [baseWord()]; ui.state.writes = []; ui.state.records = {}; ui.state.aiCalls = []; ui.state.failSave = false;
   ui.state.beforeTransaction = () => { ui.state.rows[0].learning = { usageEs: 'Concurrent edit' }; };
   await ui.backfillOwnVocabulary('test');
   assert.equal(ui.state.writes[0].data.learning, undefined);
@@ -178,4 +191,79 @@ test('backfill preserves a concurrent custom note, skips deletion, and stops aft
   ui.auth.currentUser = null;
   await assert.rejects(ui.backfillOwnVocabulary('test'), /sesión/);
   ui.auth.currentUser = { uid: 'test' };
+});
+
+test('typed study requires reveal, classifies errors and persists the chosen direction', async () => {
+  const unmount = await mount(ui.Game);
+  try {
+    assert.ok(![...document.querySelectorAll('button')].some(button => button.getAttribute('aria-label') === 'Bien'));
+    await click([...document.querySelectorAll('button')].find(button => button.title === 'Alemán -> Español'));
+    await setValue('select[aria-label="Ejercicio"]', 'type');
+    await setValue('input[aria-label="Tu respuesta"]', 'STELLEN');
+    await ui.act(async () => document.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })));
+    assert.match(container().textContent, /minúscula/);
+    await click([...document.querySelectorAll('button')].find(button => button.getAttribute('aria-label') === 'Otra vez'));
+    const event = ui.state.writes.find(write => write.ref.path.includes('/reviewEvents/')).data;
+    assert.equal(event.direction, 'es-de');
+    assert.equal(event.errorType, 'capitalization');
+    assert.equal(event.german, 'stellen');
+    assert.equal(event.rating, 1);
+    assert.equal(document.querySelector('aside'), null);
+  } finally { await unmount(); }
+});
+
+test('dictation hides the answer and offers a clear unsupported-audio fallback', async () => {
+  const unmount = await mount(ui.Game);
+  try {
+    await setValue('select[aria-label="Ejercicio"]', 'listen');
+    assert.equal(document.querySelector('[aria-label="Girar tarjeta"]'), null);
+    assert.equal(document.querySelector('aside'), null);
+    await click([...document.querySelectorAll('button')].find(button => button.textContent.includes('Escuchar alemán')));
+    assert.match(container().textContent, /no ofrece lectura/);
+    await click([...document.querySelectorAll('button')].find(button => button.textContent === 'Mostrar respuesta'));
+    assert.match(document.querySelector('aside').textContent, /Familia de stellen/);
+  } finally { await unmount(); }
+});
+
+test('contrast exercises explain a wrong choice and schedule one corrective repeat', async () => {
+  const unmount = await mount(ui.Game);
+  try {
+    await click([...document.querySelectorAll('button')].find(button => button.textContent === 'Contrastes'));
+    await click([...document.querySelectorAll('button')].find(button => button.textContent === 'lege'));
+    assert.match(container().textContent, /posición vertical/);
+    assert.equal(ui.state.writes.find(write => write.ref.path.includes('/contrastAttempts/')).data.correct, false);
+    await click([...document.querySelectorAll('button')].find(button => button.textContent === 'Siguiente'));
+    assert.match(container().textContent, /2 \/ 4/);
+  } finally { await unmount(); }
+});
+
+
+test('achievements finish loading and record earned milestones without a render loop', async () => {
+  const unmount = await mount(ui.Achievements);
+  try {
+    assert.match(container().textContent, /Progreso Total/);
+    const updates = ui.state.writes.filter(write => write.ref.path === 'users/test');
+    assert.equal(updates.length, 1);
+    assert.ok(updates[0].data.achievements.unlocked.includes('first_word'));
+  } finally { await unmount(); }
+});
+
+test('sentence evaluation uses language codes and retries a failed save without charging another evaluation', async () => {
+  const unmount = await mount(ui.SentenceMode);
+  try {
+    await click([...document.querySelectorAll('button')].find(button => button.textContent.includes('Generar')));
+    const generated = ui.state.aiCalls.find(call => call.kind === 'generate').data;
+    assert.equal(generated.context, 'Vida cotidiana');
+    assert.equal(new Set(generated.words.map(word => word.term)).size, generated.words.length);
+    await setValue('textarea', 'Pongo la botella de pie sobre la mesa.');
+    ui.state.failSave = true;
+    await ui.act(async () => document.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })));
+    const evaluation = ui.state.aiCalls.find(call => call.kind === 'evaluate').data;
+    assert.equal(evaluation.sourceLang, 'DE'); assert.equal(evaluation.targetLang, 'ES');
+    assert.match(container().textContent, /aún no está guardado/);
+    ui.state.failSave = false;
+    await click([...document.querySelectorAll('button')].find(button => button.textContent === 'Reintentar guardado'));
+    assert.equal(ui.state.aiCalls.filter(call => call.kind === 'evaluate').length, 1);
+    assert.equal(ui.state.writes.filter(write => write.ref.path.includes('/sentenceAttempts/')).length, 1);
+  } finally { await unmount(); }
 });

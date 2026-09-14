@@ -44,7 +44,7 @@ const PrivacyPolicy = ({ onBack }) => {
                             <li>Gestionar su cuenta y permitirle el acceso a la aplicación.</li>
                             <li>Sincronizar sus flashcards y progreso de aprendizaje.</li>
                             <li>Proporcionar soporte técnico opcional.</li>
-                            <li>Mejorar las funcionalidades de la aplicación basándonos en datos de uso agregados y anónimos.</li>
+                            <li>Generar ejemplos y evaluar traducciones cuando utiliza el modo Frase. La IA local procesa el ejercicio en el dispositivo; si no está disponible o falla, la petición se envía al servicio de IA de Google a través de nuestras funciones de Firebase.</li>
                         </ul>
                     </section>
 
@@ -55,6 +55,11 @@ const PrivacyPolicy = ({ onBack }) => {
                         </p>
                     </section>
 
+                    <section>
+                        <h2 className="text-lg font-semibold text-white mb-2">Vocabulario compartido y copias locales</h2>
+                        <p>Los usuarios autenticados pueden buscar su nombre de usuario; su email y progreso permanecen privados. Al activar «Compartir vocabulario», sus amigos aceptados pueden consultar e importar sus palabras, notas y ejemplos. Desactivarlo revoca el acceso futuro, pero no borra las copias ya importadas.</p>
+                        <p className="mt-2">Los repasos pendientes se guardan en este dispositivo hasta sincronizarse. Puede activar una copia sin conexión de su biblioteca en Perfil → Datos, exportar su vocabulario e importar una copia JSON. Al cerrar sesión desde la app se elimina la copia local de la biblioteca.</p>
+                    </section>
                     <section>
                         <h2 className="text-lg font-semibold text-white mb-2">5. Derechos del usuario</h2>
                         <p>Usted tiene derecho a:</p>
@@ -74,7 +79,7 @@ const PrivacyPolicy = ({ onBack }) => {
 
                     <section className="pt-6 border-t border-white/5">
                         <p className="text-xs text-slate-500">
-                            Última actualización: 13 de marzo de 2026<br />
+                            Última actualización: 14 de septiembre de 2026<br />
                             Aleman App - Palomares96
                         </p>
                     </section>

@@ -1,80 +1,49 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Helper function to check if a user is the owner of a document
-    function isOwner(userId) {
-      return request.auth.uid == userId;
+    function signedIn() { return request.auth != null; }
+    function owner(uid) { return signedIn() && request.auth.uid == uid; }
+    function shared(uid) {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(uid)).data.get('shareVocabulary', false) == true
+        && exists(/databases/$(database)/documents/users/$(uid)/friends/$(request.auth.uid))
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(uid));
     }
-
-    // Users can only update their own data.
-    // Disallow unbounded queries by enforcing a limit on list queries.
-    match /users/{userId} {
-      allow get: if request.auth != null;
-      allow list: if request.auth != null && request.query.limit <= 20;
-      allow write: if isOwner(userId);
-
-      // Friends subcollection
-      match /friends/{friendId} {
-        allow read: if isOwner(userId);
-        // Writing to friends is handled by cloud functions
-        allow write: if false;
-      }
-
-      // Progress subcollection
-      match /progress/{wordId} {
-        allow read, write: if isOwner(userId);
-      }
-
-      // Words subcollection
+    match /users/{uid} {
+      allow read: if owner(uid);
+      // Account creation/identity and tier are controlled by server functions.
+      allow update: if owner(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['shareVocabulary', 'achievements'])
+        && request.resource.data.get('shareVocabulary', false) is bool;
       match /words/{wordId} {
-        allow read, write: if isOwner(userId);
+        allow read: if owner(uid) || shared(uid);
+        allow write: if owner(uid);
       }
-
-      // Sentence attempts subcollection
-      match /sentenceAttempts/{attemptId} {
-        allow read, write: if isOwner(userId);
+      match /friends/{friendId} { allow read: if owner(uid); }
+      match /{collection}/{id} {
+        allow read, write: if owner(uid) && collection in ['progress', 'studyProgress', 'studyDays', 'sentenceAttempts', 'user_events', 'savedExamples', 'contrastProgress', 'contrastAttempts'];
       }
-
-      // User events subcollection
-      match /user_events/{eventId} {
-        allow read, write: if isOwner(userId);
+      match /reviewEvents/{eventId} {
+        allow read: if owner(uid);
+        allow create: if owner(uid) && request.resource.data.id == eventId
+          && request.resource.data.rating in [1, 2, 3, 4]
+          && request.resource.data.direction in ['de-es', 'es-de', 'listen'];
       }
     }
-
-
-    // Friend requests can be created by any authenticated user.
-    // They can only be read by the sender or receiver.
-    // They can only be deleted by the receiver.
-    match /friendRequests/{requestId} {
-      allow create: if request.auth != null && request.resource.data.from_uid == request.auth.uid;
-      allow read: if isOwner(resource.data.from_uid) || isOwner(resource.data.to_uid);
-      allow update: if isOwner(resource.data.to_uid); // receiver can accept
-      allow delete: if isOwner(resource.data.to_uid); // receiver can decline
+    match /publicProfiles/{uid} {
+      allow get: if signedIn();
+      allow list: if signedIn() && request.query.limit <= 20;
     }
-    
-    // Rate limits - only accessible by Cloud Functions (Admin SDK)
-    match /rateLimits/{docId} {
-        allow read, write: if false;
+    match /friendRequests/{id} {
+      allow read: if signedIn() && (resource.data.from_uid == request.auth.uid || resource.data.to_uid == request.auth.uid);
     }
-
-    // Daily stats: users can read and write their own daily snapshots.
-    // The document ID format is: {userId}_{YYYY-MM-DD}
-    match /dailyStats/{statId} {
-        allow read: if request.auth != null && resource.data.userId == request.auth.uid;
-        allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-        allow update: if request.auth != null && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid;
-    }
-    
-    // Categories are shared and can be read and created by any authenticated user.
-    match /categories/{categoryId} {
-      allow read, create: if request.auth != null;
-    }
-
-    // Default deny all other reads/writes
-    match /{document=**} {
-      allow read, write: if false;
+    match /dailyStats/{id} { allow read: if signedIn() && resource.data.userId == request.auth.uid; }
+    match /categories/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.keys().hasOnly(['name_es', 'name_de', 'createdAt', 'createdBy'])
+        && request.resource.data.get('createdBy', request.auth.uid) == request.auth.uid
+        && request.resource.data.name_es is string && request.resource.data.name_es.size() <= 100
+        && request.resource.data.name_de is string && request.resource.data.name_de.size() <= 100;
     }
   }
 }

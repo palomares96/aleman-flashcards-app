@@ -4,7 +4,7 @@ module.exports = [
   js.configs.recommended,
   {
     languageOptions: {
-      ecmaVersion: 2018,
+      ecmaVersion: "latest",
       sourceType: "commonjs",
       globals: {
         console: "readonly",
@@ -18,6 +18,7 @@ module.exports = [
       "no-restricted-globals": ["error", "name", "length"],
     },
   },
+  { files: ["shared/**/*.mjs"], languageOptions: { sourceType: "module" } },
   {
     files: ["**/*.spec.*"],
     languageOptions: {

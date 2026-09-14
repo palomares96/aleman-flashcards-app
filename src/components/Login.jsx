@@ -7,7 +7,7 @@ import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 // =================================================================================
 // COMPONENTE NUEVO: Pantalla de Login
 // =================================================================================
-function Login() {
+function Login({ onShowPrivacy }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
@@ -60,7 +60,7 @@ function Login() {
                     <h1 className="text-2xl font-bold text-center">Bienvenido</h1>
                     <p className="text-sm text-center text-gray-400">Accede a tus flashcards</p>
                 </div>
-                <form className="space-y-4">
+                <form onSubmit={handleSignIn} className="space-y-4">
                     <input
                         type="email"
                         value={email}
@@ -77,8 +77,8 @@ function Login() {
                     />
                     {error && <p className="text-xs text-center text-red-400">{error}</p>}
                     <div className="flex gap-2">
-                        <button onClick={handleSignIn} className="w-full py-2 font-bold text-white bg-blue-600 rounded-md hover:bg-blue-70d00">Entrar</button>
-                        <button onClick={handleSignUp} className="w-full py-2 font-semibold text-blue-300 bg-blue-900/50 rounded-md hover:bg-blue-900/80">Registrar</button>
+                        <button type="submit" className="w-full py-2 font-bold text-white bg-blue-600 rounded-md hover:bg-blue-70d00">Entrar</button>
+                        <button type="button" onClick={handleSignUp} className="w-full py-2 font-semibold text-blue-300 bg-blue-900/50 rounded-md hover:bg-blue-900/80">Registrar</button>
                     </div>
                 </form>
                 <div className="relative">

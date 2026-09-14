@@ -16,11 +16,9 @@ const trophyEventEmitter = {
   }
 };
 
-export function useTrophyNotification() {
-  return {
-    emitTrophy: (trophy) => trophyEventEmitter.emit(trophy),
-    subscribe: (callback) => trophyEventEmitter.subscribe(callback)
-  };
-}
-
+const api = {
+  emitTrophy: trophy => trophyEventEmitter.emit(trophy),
+  subscribe: callback => trophyEventEmitter.subscribe(callback),
+};
+export function useTrophyNotification() { return api; }
 export default trophyEventEmitter;

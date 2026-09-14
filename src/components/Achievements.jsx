@@ -4,6 +4,7 @@ import { TROPHIES, TROPHY_CATEGORIES, useAchievementCheck } from '../hooks/useAc
 function Achievements({ user, onUnlock }) {
   const [unlocked, setUnlocked] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(null);
   
   const checkAchievements = useAchievementCheck(user, (t) => {
@@ -18,7 +19,7 @@ function Achievements({ user, onUnlock }) {
         const unlockedList = await checkAchievements();
         setUnlocked(unlockedList || []);
       } catch (err) {
-        console.error('Error cargando logros', err);
+        setError('No se pudieron cargar los logros. Reabre esta pestaña para reintentar.');
       } finally {
         setLoading(false);
       }
@@ -27,6 +28,8 @@ function Achievements({ user, onUnlock }) {
     fetchAndCompute();
   }, [user, checkAchievements]);
 
+  if (loading) return <p role="status">Cargando logros…</p>;
+  if (error) return <p role="alert">{error}</p>;
   if (!user) return <div className="p-6 text-center text-gray-400">Inicia sesión para ver tus logros.</div>;
 
   const getCategoryColor = (color) => {
@@ -78,7 +81,7 @@ function Achievements({ user, onUnlock }) {
     return (
       <div className="w-full max-w-3xl mx-auto pb-20 px-4">
         <h1 className="text-3xl font-bold mb-2">🏆 Logros</h1>
-        <p className="text-sm text-gray-400 mb-6">¡Colecciónalos todos!</p>
+        <p className="text-sm text-gray-400 mb-6">Tus logros anteriores se conservan. Los nuevos hitos se calculan al abrir esta pantalla.</p>
 
         {/* Total Progress */}
         <div className="mb-8 p-4 bg-slate-800 rounded-2xl border border-gray-700 shadow-lg">
