@@ -1,3 +1,4 @@
+import { notifyVocabularyChanged } from './repository.js';
 import { collection, doc, documentId, getDocs, limit, orderBy, query, runTransaction, startAfter } from 'firebase/firestore';
 import { db, auth } from '../firebase.js';
 import { planVocabularyPatch } from '../utils/vocabulary.js';
@@ -36,6 +37,7 @@ export function backfillOwnVocabulary(uid, onProgress = () => {}) {
       onProgress({ ...totals });
       cursor = page.size === 100 ? page.docs[page.docs.length - 1] : null;
     } while (cursor);
+    if (totals.updated && typeof window !== 'undefined') notifyVocabularyChanged();
     return totals;
   };
   const promise = work().finally(() => running.delete(uid));

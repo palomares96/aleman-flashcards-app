@@ -1,6 +1,8 @@
+import GrammarFields from './GrammarFields.jsx';
+import { readCollection, notifyVocabularyChanged } from '../services/repository.js';
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase.js'; 
-import { getDocs, collection, addDoc, doc, updateDoc, deleteDoc, query, limit } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc, deleteDoc } from "firebase/firestore";
 import LearningFields from './LearningFields.jsx';
 import { enrichWord, normalizePrefixes, prepareWordForSave } from '../utils/vocabulary.js';
 import { initialFormData } from '../config.js'; 
@@ -52,23 +54,23 @@ function VocabularyManager({ user }) {
             setIsLoading(true);
             try {
                 const [wordsSnapshot, categoriesSnapshot] = await Promise.all([
-                    getDocs(collection(db, `users/${user.uid}/words`)),
-                    getDocs(query(collection(db, "categories"), limit(100)))
+                    readCollection(`users/${user.uid}/words`),
+                    readCollection('categories')
                 ]);
-                const wordsList = wordsSnapshot.docs.map(doc => enrichWord({ id: doc.id, ...doc.data() }));
+                const wordsList = wordsSnapshot.map(enrichWord);
                 // Ordenar alfabéticamente por defecto
                 wordsList.sort((a, b) => a.german.localeCompare(b.german));
                 
                 setAllWords(wordsList);
                 setFilteredWords(wordsList);
-                const cats = categoriesSnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name_es }));
+                const cats = categoriesSnapshot.map(row => ({ id: row.id, name: row.name_es }));
                 // Asegurar que 'Otros' esté presente en la lista local de categorías
                 if (!cats.some(c => c.name === 'Otros')) {
                     cats.unshift({ id: 'otros-local', name: 'Otros' });
                 }
                 setCategories(cats);
             } catch (e) {
-                console.error("Error cargando datos", e);
+                setFeedback({ type: 'error', message: 'No se pudo cargar la biblioteca. Reabre esta pestaña para reintentar.' });
             } finally {
                 setIsLoading(false);
             }
@@ -134,7 +136,7 @@ function VocabularyManager({ user }) {
             const categoryName = (formData.category.trim() || 'Otros');
             let categoryId = categories.find(c => c.name.toLowerCase() === categoryName.toLowerCase())?.id;
             if (categoryName && !categoryId) {
-                const newCatRef = await addDoc(collection(db, "categories"), { name_es: categoryName, name_de: categoryName });
+                const newCatRef = await addDoc(collection(db, "categories"), { createdBy: user.uid, name_es: categoryName, name_de: categoryName });
                 setCategories(p => [...p, { id: newCatRef.id, name: categoryName }]);
                 categoryId = newCatRef.id;
             }
@@ -145,6 +147,7 @@ function VocabularyManager({ user }) {
                 type: formData.type,
                 difficulty: parseInt(formData.difficulty),
                 ...(categoryId && { categoryId }),
+                ...(formData.grammar ? { grammar: formData.grammar } : {}),
                 attributes: { ...selectedWord.attributes }
             };
             
@@ -168,6 +171,7 @@ function VocabularyManager({ user }) {
             if (formData.learning) updatedWord.learning = formData.learning;
             updatedWord = prepareWordForSave(updatedWord);
             await updateDoc(doc(db, `users/${user.uid}/words`, selectedWord.id), updatedWord);
+            notifyVocabularyChanged();
             setAllWords(prev => prev.map(w => w.id === selectedWord.id ? { ...w, ...updatedWord } : w));
             
             setSelectedWord(prev => ({ ...prev, ...updatedWord }));
@@ -187,6 +191,7 @@ function VocabularyManager({ user }) {
         setIsSaving(true);
         try {
             await deleteDoc(doc(db, `users/${user.uid}/words`, selectedWord.id));
+            notifyVocabularyChanged();
             setAllWords(prev => prev.filter(w => w.id !== selectedWord.id));
             handleBackToList(); // Volver a la lista tras borrar
         } catch (err) { console.error(err); setFeedback({ type: 'error', message: 'Error al borrar.' }); } 
@@ -404,7 +409,8 @@ function VocabularyManager({ user }) {
                                     {(formData.type === 'adjective' || formData.type === 'other') && <p className="text-sm text-gray-500 italic text-center">No hay atributos especiales para este tipo.</p>}
                                 </div>
 
-                                <LearningFields word={formData} onChange={learning => setFormData(prev => ({ ...prev, learning }))} />
+                                <GrammarFields word={formData} onChange={grammar => setFormData(prev => ({ ...prev, grammar }))} />
+                <LearningFields word={formData} onChange={learning => setFormData(prev => ({ ...prev, learning }))} />
 
                                 {/* Botón Guardar Flotante o Fijo */}
                                 <div className="pt-4 pb-2">

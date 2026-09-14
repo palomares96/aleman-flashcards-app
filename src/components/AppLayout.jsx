@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import OfflineAppStatus from './OfflineAppStatus.jsx';
+import { Capacitor } from '@capacitor/core';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import VocabularyEnrichmentStatus from './VocabularyEnrichmentStatus.jsx';
 import Game from './Game.jsx';
-import SentenceMode from './SentenceMode.jsx';
+const SentenceMode = lazy(() => import('./SentenceMode.jsx'));
 // Importamos los nuevos contenedores
-import LibrarySection from './LibrarySection.jsx';
-import ProfileSection from './ProfileSection.jsx';
-import Achievements from './Achievements.jsx';
+const LibrarySection = lazy(() => import('./LibrarySection.jsx'));
+const ProfileSection = lazy(() => import('./ProfileSection.jsx'));
+const Achievements = lazy(() => import('./Achievements.jsx'));
 import TrophyBanner from './TrophyBanner.jsx';
 import { useTrophyNotification } from '../hooks/useGlobalTrophyNotification.js';
 
@@ -124,13 +126,16 @@ function AppLayout({ user, userProfile, onShowPrivacy }) {
                     <div className="fixed bottom-0 right-0 w-80 h-80 bg-purple-600/10 rounded-full blur-3xl translate-x-1/3 translate-y-1/3 pointer-events-none"></div>
 
                     <div className="relative z-10 h-full">
+                        {!Capacitor.isNativePlatform() && <OfflineAppStatus />}
                         <VocabularyEnrichmentStatus user={user} />
                         {banner && <TrophyBanner trophy={banner} onClose={() => setBanner(null)} />}
+                        <Suspense fallback={<p role="status">Cargando…</p>}>
                         {view === 'game' && <Game user={user} onTrophyUnlock={(t) => setBanner(t)} />}
                         {view === 'sentenceMode' && <SentenceMode user={user} userProfile={userProfile} />}
                         {view === 'library' && <LibrarySection user={user} />}
                         {view === 'achievements' && <Achievements user={user} onUnlock={(t) => setBanner(t)} />}
                         {view === 'profile' && <ProfileSection user={user} userProfile={userProfile} />}
+                        </Suspense>
                     </div>
                 </main>
 

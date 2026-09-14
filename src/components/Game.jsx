@@ -1,573 +1,857 @@
-import WordLearningPanel from './WordLearningPanel.jsx';
-import { expandVocabulary, normalizeGerman } from '../utils/vocabulary.js';
-import { MASTERY_CRITERIA } from '../config.js';
-import React, { useState, useEffect } from 'react';
-import { db } from '../firebase.js';
-import { getDocs, collection, doc, serverTimestamp, increment, setDoc, query, limit, addDoc } from 'firebase/firestore';
-import { useAchievementCheck } from '../hooks/useAchievementCheck.js';
+import WordLearningPanel from "./WordLearningPanel.jsx";
+import { expandVocabulary, normalizeGerman } from "../utils/vocabulary.js";
+import React, { useState, useEffect, useRef } from "react";
+import { useStudyData } from "../hooks/useStudyData.js";
+import { recordReview, pendingReviews } from "../services/studyStore.js";
+import { readCollection } from "../services/repository.js";
+import {
+  studyId,
+  dailyQueue,
+  progressStats,
+  localDay,
+  germanAnswer,
+  checkAnswer,
+  scheduleCard,
+  RATINGS,
+  ERROR_LABELS,
+} from "../utils/study.js";
+import AudioButton from "./AudioButton.jsx";
+import ContrastPractice from "./ContrastPractice.jsx";
+import MistakesNotebook from "./MistakesNotebook.jsx";
 
 // --- ICONOS ---
-const FilterIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" /></svg>;
-const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>;
-const XIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>;
-const SwapIcon = () => (<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>);
-const RotateIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>;
+const FilterIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+    strokeWidth={1.5}
+    stroke="currentColor"
+    className="w-6 h-6"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75"
+    />
+  </svg>
+);
+const CheckIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+    strokeWidth={2.5}
+    stroke="currentColor"
+    className="w-6 h-6"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M4.5 12.75l6 6 9-13.5"
+    />
+  </svg>
+);
+const XIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+    strokeWidth={2.5}
+    stroke="currentColor"
+    className="w-6 h-6"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M6 18L18 6M6 6l12 12"
+    />
+  </svg>
+);
+const SwapIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    className="h-5 w-5"
+    fill="none"
+    viewBox="0 0 24 24"
+    stroke="currentColor"
+    strokeWidth={2}
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+    />
+  </svg>
+);
+const RotateIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    className="h-6 w-6 opacity-60"
+    fill="none"
+    viewBox="0 0 24 24"
+    stroke="currentColor"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+    />
+  </svg>
+);
 
 // =================================================================================
 // COMPONENTE VISUAL: CARA DE LA TARJETA
 // =================================================================================
-const CardFace = ({ palabra, isFront, direction, baseGradientClasses, isVisible }) => {
-    const isGermanSide = (isFront && direction === 'de-es') || (!isFront && direction === 'es-de');
-    const mainText = isGermanSide ? normalizeGerman(palabra.german, palabra.type) : palabra.spanish;
-    const langLabel = isGermanSide ? 'ALEMÁN' : 'ESPAÑOL';
+const CardFace = ({
+  palabra,
+  isFront,
+  direction,
+  baseGradientClasses,
+  isVisible,
+}) => {
+  const isGermanSide =
+    (isFront && direction === "de-es") || (!isFront && direction === "es-de");
+  const mainText = isGermanSide
+    ? normalizeGerman(palabra.german, palabra.type)
+    : palabra.spanish;
+  const langLabel = isGermanSide ? "ALEMÁN" : "ESPAÑOL";
 
-    // Diccionarios para visualización
-    const articles = { m: 'der', f: 'die', n: 'das' };
-    const genderLabels = { m: 'Masculino', f: 'Femenino', n: 'Neutral' };
+  // Diccionarios para visualización
+  const articles = { m: "der", f: "die", n: "das" };
+  const genderLabels = { m: "Masculino", f: "Femenino", n: "Neutral" };
 
-    let displayMain = mainText;
-    let typeInfo = "";
+  let displayMain = mainText;
+  let typeInfo = "";
 
-    if (isGermanSide) {
-        if (palabra.type === 'noun' && palabra.attributes?.gender) {
-            displayMain = `${articles[palabra.attributes.gender]} ${mainText.charAt(0).toUpperCase() + mainText.slice(1)}`;
-            typeInfo = `Sustantivo • ${genderLabels[palabra.attributes.gender] || ''}`;
-        } else {
-            typeInfo = ({ verb: 'Verbo', adjective: 'Adjetivo', preposition: 'Preposición', other: 'Palabra' })[palabra.type] || 'Palabra';
-        }
+  if (isGermanSide) {
+    if (palabra.type === "noun" && palabra.attributes?.gender) {
+      displayMain = `${articles[palabra.attributes.gender]} ${mainText.charAt(0).toUpperCase() + mainText.slice(1)}`;
+      typeInfo = `Sustantivo • ${genderLabels[palabra.attributes.gender] || ""}`;
     } else {
-        typeInfo = "Traducción";
+      typeInfo =
+        {
+          verb: "Verbo",
+          adjective: "Adjetivo",
+          preposition: "Preposición",
+          other: "Palabra",
+        }[palabra.type] || "Palabra";
     }
+  } else {
+    typeInfo = "Traducción";
+  }
 
-    // Estilo Glossy con corte diagonal nítido
-    const sharpReflectionStyle = {
-        background: 'linear-gradient(125deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.05) 45%, rgba(255,255,255,0) 45.1%, rgba(0,0,0,0.1) 100%)'
-    };
+  // Estilo Glossy con corte diagonal nítido
+  const sharpReflectionStyle = {
+    background:
+      "linear-gradient(125deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.05) 45%, rgba(255,255,255,0) 45.1%, rgba(0,0,0,0.1) 100%)",
+  };
 
-    const neutralGradient = "bg-gradient-to-br from-gray-700 to-gray-800";
-    const faceGradient = isGermanSide ? baseGradientClasses : neutralGradient;
+  const neutralGradient = "bg-gradient-to-br from-gray-700 to-gray-800";
+  const faceGradient = isGermanSide ? baseGradientClasses : neutralGradient;
 
-    return (
-        <div
-            aria-hidden={!isVisible}
-            className={`
+  return (
+    <div
+      aria-hidden={!isVisible}
+      className={`
             absolute w-full h-full rounded-[2rem] 
             ${faceGradient} 
             backdrop-blur-xl border border-white/20 shadow-2xl 
             flex flex-col p-8 overflow-hidden backface-hidden
         `}
-            style={{
-                backfaceVisibility: 'hidden',
-                transform: isFront ? 'rotateY(0deg)' : 'rotateY(180deg)'
-            }}
-        >
-            {/* Capa de brillo */}
-            <div className="absolute inset-0 pointer-events-none mix-blend-overlay" style={sharpReflectionStyle}></div>
+      style={{
+        backfaceVisibility: "hidden",
+        transform: isFront ? "rotateY(0deg)" : "rotateY(180deg)",
+      }}
+    >
+      {/* Capa de brillo */}
+      <div
+        className="absolute inset-0 pointer-events-none mix-blend-overlay"
+        style={sharpReflectionStyle}
+      ></div>
 
-            {/* Header */}
-            <div className="flex justify-between items-start z-10">
-                <span className="text-xs font-bold tracking-[0.2em] text-white/70 uppercase">{langLabel}</span>
-                {isFront && <div className="animate-pulse"><RotateIcon /></div>}
+      {/* Header */}
+      <div className="flex justify-between items-start z-10">
+        <span className="text-xs font-bold tracking-[0.2em] text-white/70 uppercase">
+          {langLabel}
+        </span>
+        {isFront && (
+          <div className="animate-pulse">
+            <RotateIcon />
+          </div>
+        )}
+      </div>
+
+      {/* Contenido */}
+      <div className="flex-1 flex flex-col justify-center z-10 my-4">
+        <h2 className="text-4xl sm:text-5xl font-bold text-white mb-3 tracking-tight leading-tight drop-shadow-md break-words">
+          {displayMain}
+        </h2>
+        {!isGermanSide && palabra.learning?.hintEs && (
+          <p className="text-sm text-white/80 mb-3">
+            {palabra.learning.hintEs}
+          </p>
+        )}
+        <p className="text-lg text-white/80 font-medium tracking-wide">
+          {typeInfo}
+        </p>
+
+        {/* Info extra para verbos (solo cara alemana) */}
+        {isGermanSide &&
+          palabra.type === "verb" &&
+          !palabra.isDerived &&
+          palabra.attributes?.pastTense && (
+            <div className="mt-4 pt-4 border-t border-white/20 w-full">
+              <p className="text-sm text-white/90 opacity-90 font-mono">
+                {palabra.attributes.pastTense}, {palabra.attributes.participle}
+              </p>
             </div>
+          )}
+      </div>
 
-            {/* Contenido */}
-            <div className="flex-1 flex flex-col justify-center z-10 my-4">
-                <h2 className="text-4xl sm:text-5xl font-bold text-white mb-3 tracking-tight leading-tight drop-shadow-md break-words">
-                    {displayMain}
-                </h2>
-                {!isGermanSide && palabra.learning?.hintEs && <p className="text-sm text-white/80 mb-3">{palabra.learning.hintEs}</p>}
-                <p className="text-lg text-white/80 font-medium tracking-wide">{typeInfo}</p>
-
-                {/* Info extra para verbos (solo cara alemana) */}
-                {isGermanSide && palabra.type === 'verb' && !palabra.isDerived && palabra.attributes?.pastTense && (
-                    <div className="mt-4 pt-4 border-t border-white/20 w-full">
-                        <p className="text-sm text-white/90 opacity-90 font-mono">
-                            {palabra.attributes.pastTense}, {palabra.attributes.participle}
-                        </p>
-                    </div>
-                )}
-            </div>
-
-            {/* Footer */}
-            <div className="z-10 flex justify-between items-end w-full">
-                <span className="text-xs font-bold text-white/90 bg-black/20 px-3 py-1.5 rounded-full backdrop-blur-md border border-white/10">
-                    Nivel {palabra.difficulty}
-                </span>
-                {!isFront && (
-                    <span className="text-xs text-white/50 uppercase tracking-widest font-bold">Reverso</span>
-                )}
-            </div>
-        </div>
-    );
+      {/* Footer */}
+      <div className="z-10 flex justify-between items-end w-full">
+        <span className="text-xs font-bold text-white/90 bg-black/20 px-3 py-1.5 rounded-full backdrop-blur-md border border-white/10">
+          Nivel {palabra.difficulty}
+        </span>
+        {!isFront && (
+          <span className="text-xs text-white/50 uppercase tracking-widest font-bold">
+            Reverso
+          </span>
+        )}
+      </div>
+    </div>
+  );
 };
 
 // =================================================================================
 // COMPONENTE VISUAL: STACK DE CARTAS (CON ANIMACIONES AJUSTADAS)
 // =================================================================================
 const DeckBackground = ({ count }) => {
-    if (count <= 1) return null;
-    const stackColor = "bg-gray-800"; // Always neutral to avoid spoilers
-    return (
-        <div className="absolute inset-0 w-full h-full pointer-events-none">
-            {count > 1 && (
-                <div className={`absolute inset-0 rounded-[2rem] ${stackColor} opacity-30 transform translate-y-8 scale-[0.90] blur-[1px] transition-all duration-300`}></div>
-            )}
-            {count > 0 && (
-                <div className={`absolute inset-0 rounded-[2rem] ${stackColor} opacity-50 transform translate-y-4 scale-[0.95] transition-all duration-300 shadow-xl`}></div>
-            )}
-        </div>
-    );
+  if (count <= 1) return null;
+  const stackColor = "bg-gray-800"; // Always neutral to avoid spoilers
+  return (
+    <div className="absolute inset-0 w-full h-full pointer-events-none">
+      {count > 1 && (
+        <div
+          className={`absolute inset-0 rounded-[2rem] ${stackColor} opacity-30 transform translate-y-8 scale-[0.90] blur-[1px] transition-all duration-300`}
+        ></div>
+      )}
+      {count > 0 && (
+        <div
+          className={`absolute inset-0 rounded-[2rem] ${stackColor} opacity-50 transform translate-y-4 scale-[0.95] transition-all duration-300 shadow-xl`}
+        ></div>
+      )}
+    </div>
+  );
 };
 
 const ActiveCard = ({ palabra, flipped, direction, onClick, isSwipingOut }) => {
-    let baseGradient = "bg-gradient-to-br from-gray-700 to-gray-800";
+  let baseGradient = "bg-gradient-to-br from-gray-700 to-gray-800";
 
-    if (palabra.type === 'noun') {
-        if (palabra.attributes?.gender === 'm') { baseGradient = "bg-gradient-to-br from-blue-500 to-blue-700"; }
-        if (palabra.attributes?.gender === 'f') { baseGradient = "bg-gradient-to-br from-pink-500 to-pink-700"; }
-        if (palabra.attributes?.gender === 'n') { baseGradient = "bg-gradient-to-br from-emerald-500 to-emerald-700"; }
-    } else if (palabra.type === 'verb') {
-        baseGradient = "bg-gradient-to-br from-orange-500 to-orange-700";
-    } else if (palabra.type === 'adjective') {
-        baseGradient = "bg-gradient-to-br from-purple-500 to-purple-700";
+  if (palabra.type === "noun") {
+    if (palabra.attributes?.gender === "m") {
+      baseGradient = "bg-gradient-to-br from-blue-500 to-blue-700";
     }
+    if (palabra.attributes?.gender === "f") {
+      baseGradient = "bg-gradient-to-br from-pink-500 to-pink-700";
+    }
+    if (palabra.attributes?.gender === "n") {
+      baseGradient = "bg-gradient-to-br from-emerald-500 to-emerald-700";
+    }
+  } else if (palabra.type === "verb") {
+    baseGradient = "bg-gradient-to-br from-orange-500 to-orange-700";
+  } else if (palabra.type === "adjective") {
+    baseGradient = "bg-gradient-to-br from-purple-500 to-purple-700";
+  }
 
-    // --- ANIMACIONES DE DESLIZAMIENTO ---
-    const swipeAnimationClasses = isSwipingOut
-        ? "-translate-x-[120%] rotate-[-15deg] opacity-0 duration-150 ease-in"
-        : "translate-x-0 rotate-0 opacity-100 duration-200 ease-out";
+  // --- ANIMACIONES DE DESLIZAMIENTO ---
+  const swipeAnimationClasses = isSwipingOut
+    ? "-translate-x-[120%] rotate-[-15deg] opacity-0 duration-150 ease-in"
+    : "translate-x-0 rotate-0 opacity-100 duration-200 ease-out";
 
-    return (
-        <div className={`relative w-full h-80 sm:h-96 transition-all ${swipeAnimationClasses}`} style={{ perspective: "1200px" }}>
-            {/* Carta Principal */}
-            <div
-                onClick={onClick}
-                role="button" tabIndex={0} aria-label="Girar tarjeta" aria-pressed={flipped}
-                onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClick(); } }}
-                className="relative w-full h-full cursor-pointer transition-transform duration-300 transform-style-3d shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)]"
-                style={{ transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)" }}
-            >
-                <CardFace palabra={palabra} isFront={true} isVisible={!flipped} direction={direction} baseGradientClasses={baseGradient} />
-                <CardFace palabra={palabra} isFront={false} isVisible={flipped} direction={direction} baseGradientClasses={baseGradient} />
-            </div>
-        </div>
-    );
+  return (
+    <div
+      className={`relative w-full h-80 sm:h-96 transition-all ${swipeAnimationClasses}`}
+      style={{ perspective: "1200px" }}
+    >
+      {/* Carta Principal */}
+      <div
+        onClick={onClick}
+        role="button"
+        tabIndex={0}
+        aria-label="Girar tarjeta"
+        aria-pressed={flipped}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onClick();
+          }
+        }}
+        className="relative w-full h-full cursor-pointer transition-transform duration-300 transform-style-3d shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)]"
+        style={{ transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)" }}
+      >
+        <CardFace
+          palabra={palabra}
+          isFront={true}
+          isVisible={!flipped}
+          direction={direction}
+          baseGradientClasses={baseGradient}
+        />
+        <CardFace
+          palabra={palabra}
+          isFront={false}
+          isVisible={flipped}
+          direction={direction}
+          baseGradientClasses={baseGradient}
+        />
+      </div>
+    </div>
+  );
 };
-
 
 // =================================================================================
 // LÓGICA DEL JUEGO (GAME)
 // =================================================================================
-function Game({ user, onTrophyUnlock }) {
-    const [allWords, setAllWords] = useState([]);
-    const [myOriginalWords, setMyOriginalWords] = useState([]);
-    const [filteredWords, setFilteredWords] = useState([]);
-    const [categories, setCategories] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const checkAchievements = useAchievementCheck(user, onTrophyUnlock);
-
-    const initialFilters = { type: '', categoryId: '', difficulty: '', performance: '', gender: '', case: '', separablePrefix: '', friendPlay: '' };
-    const [filters, setFilters] = useState(initialFilters);
-
-    const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
-    const [indice, setIndice] = useState(0);
-    const [flipped, setFlipped] = useState(false);
-    const [isAnimating, setIsAnimating] = useState(false);
-    const [direction, setDirection] = useState('de-es');
-
-    const [gameMode, setGameMode] = useState('random');
-    const [reviewDeck, setReviewDeck] = useState([]);
-    const [friends, setFriends] = useState([]);
-
-    // Estado para controlar la animación de salida
-    const [isSwipingOut, setIsSwipingOut] = useState(false);
-
-    // Estado para estadísticas de la sesión (resumen final)
-    const [sessionStats, setSessionStats] = useState({ correct: 0, incorrect: [], total: 0 });
-
-    // --- CARGA DE DATOS ---
-    useEffect(() => {
-        const fetchData = async () => {
-            if (!user) return;
-            setLoading(true);
-            try {
-                // Aumentamos el límite para que el "mazo" sea representativo
-                const MAX_WORDS = 1000;
-
-                // --- DENTRO DE fetchData ---
-                const [wordsSnapshot, categoriesSnapshot, progressSnapshot, friendsSnapshot] = await Promise.all([
-                    // Quitamos el limit() para traer TODO el mazo personal
-                    getDocs(collection(db, `users/${user.uid}/words`)),
-                    getDocs(query(collection(db, "categories"), limit(100))),
-                    getDocs(collection(db, `users/${user.uid}/progress`)),
-                    getDocs(query(collection(db, `users/${user.uid}/friends`), limit(500)))
-                ]);
-
-
-                setFriends(friendsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-                setCategories(categoriesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-
-                const progressData = progressSnapshot.docs.reduce((acc, doc) => {
-                    acc[doc.id] = doc.data();
-                    return acc;
-                }, {});
-
-                const baseWords = wordsSnapshot.docs.map(doc => {
-                    const wordData = doc.data();
-                    const progress = progressData[doc.id] || { correct: 0, incorrect: 0, correctStreak: 0 };
-                    const totalPlays = (progress.correct || 0) + (progress.incorrect || 0);
-                    const errorRate = totalPlays > 0 ? (progress.incorrect || 0) / totalPlays : 0;
-
-                    const isMastered = (totalPlays >= MASTERY_CRITERIA.MIN_PLAYS && errorRate < MASTERY_CRITERIA.MAX_ERROR_RATE) || (progress.correctStreak || 0) >= MASTERY_CRITERIA.STREAK_NEEDED;
-
-                    return { id: doc.id, ...wordData, progress: { ...progress, totalPlays, errorRate, isMastered } };
-                });
-
-                const playableWords = expandVocabulary(baseWords);
-
-                setAllWords(playableWords);
-                setMyOriginalWords(playableWords);
-
-            } catch (err) {
-                setError("No se pudieron cargar los datos.");
-                console.error(err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchData();
-    }, [user]);
-
-    // --- FILTRADO ---
-    useEffect(() => {
-        const applyFiltersAndLoadFriendWords = async () => {
-            let sourceWords = myOriginalWords;
-
-            if (filters.friendPlay) {
-                const friendUid = filters.friendPlay;
-                const friendWordsSnapshot = await getDocs(query(collection(db, `users/${friendUid}/words`), limit(50)));
-
-                sourceWords = friendWordsSnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data(),
-                    progress: { correct: 0, incorrect: 0, correctStreak: 0, totalPlays: 0, errorRate: 0, isMastered: false }
-                }));
-
-                sourceWords = expandVocabulary(sourceWords);
-            } else if (allWords !== myOriginalWords) {
-                sourceWords = myOriginalWords;
-            }
-
-            setAllWords(sourceWords);
-
-            setFilteredWords(sourceWords.filter(w => {
-                if (filters.type && w.type !== filters.type) return false;
-                if (filters.categoryId && w.categoryId !== filters.categoryId) return false;
-                if (filters.difficulty && w.difficulty !== parseInt(filters.difficulty)) return false;
-                if (filters.type === 'noun' && filters.gender && w.attributes?.gender !== filters.gender) return false;
-                if (filters.type === 'preposition' && filters.case && w.attributes?.case !== filters.case) return false;
-
-                if (filters.performance && !filters.friendPlay) {
-                    const p = w.progress;
-                    if (filters.performance === 'new' && p.totalPlays >= 3) return false;
-                    if (filters.performance === 'struggling' && (p.totalPlays < 3 || p.errorRate <= 0.3)) return false;
-                    if (filters.performance === 'difficult' && (p.totalPlays < 5 || p.errorRate <= 0.5)) return false;
-                }
-                return true;
-            }));
-        };
-
-        applyFiltersAndLoadFriendWords();
-    }, [filters, myOriginalWords]);
-
-    // Resetear estadísticas al cambiar filtros o recargar palabras
-    useEffect(() => {
-        setSessionStats({ correct: 0, incorrect: [], total: 0 });
-    }, [filteredWords]);
-
-    // --- INICIALIZACIÓN DEL MAZO ---
-    useEffect(() => {
-        if (filteredWords.length === 0) return;
-        setFlipped(false);
-        if (gameMode === 'review') {
-            const shuffled = [...filteredWords].sort(() => Math.random() - 0.5);
-            setReviewDeck(shuffled);
-        } else {
-            setIndice(Math.floor(Math.random() * filteredWords.length));
-        }
-    }, [filteredWords, gameMode]);
-
-    // Añadimos una validación extra para evitar el undefined
-    const palabraActual = gameMode === 'review'
-        ? (reviewDeck.length > 0 ? reviewDeck[0] : null)
-        : (filteredWords.length > 0 ? filteredWords[indice % filteredWords.length] : null);
-
-    // --- SELECCIÓN DE SIGUIENTE PALABRA ---
-    const selectNextWord = () => {
-        if (filteredWords.length <= 1) {
-            if (gameMode === 'review') setReviewDeck(prev => prev.slice(1));
-            else setIndice(0);
-            return;
-        }
-        switch (gameMode) {
-            case 'review':
-                setReviewDeck(prevDeck => prevDeck.slice(1));
-                break;
-            case 'smart':
-                const weights = filteredWords.map(word => {
-                    const p = word.progress;
-                    const newnessScore = 5 / (p.totalPlays + 1);
-                    const errorScore = (p.errorRate ** 2) * 10;
-                    const baseWeight = 0.1;
-                    return { word, weight: newnessScore + errorScore + baseWeight };
-                });
-                const totalWeight = weights.reduce((sum, item) => sum + item.weight, 0);
-                let random = Math.random() * totalWeight;
-                let nextWord = filteredWords.find(w => w.id !== palabraActual?.id) || filteredWords[0];
-                for (const item of weights) {
-                    random -= item.weight;
-                    if (random <= 0) { if (item.word.id !== palabraActual?.id) { nextWord = item.word; break; } }
-                }
-                setIndice(filteredWords.findIndex(w => w.id === nextWord.id));
-                break;
-            case 'random':
-            default:
-                let nuevoIndice;
-                do { nuevoIndice = Math.floor(Math.random() * filteredWords.length); } while (filteredWords.length > 1 && nuevoIndice === indice);
-                setIndice(nuevoIndice);
-                break;
-        }
+function StudyCards({ user, mistakeIds = null }) {
+  const study = useStudyData(user.uid);
+  const sessionId = useRef(crypto.randomUUID());
+  const [direction, setDirection] = useState(
+    mistakeIds?.direction === "es-de" ? "es-de" : "de-es",
+  );
+  const [practice, setPractice] = useState(
+    mistakeIds?.direction === "listen" ? "listen" : "cards",
+  );
+  const [mode, setMode] = useState(mistakeIds ? "mistakes" : "due");
+  const [filters, setFilters] = useState({
+    type: "",
+    categoryId: "",
+    difficulty: "",
+    gender: "",
+    case: "",
+    performance: "",
+  });
+  const [friend, setFriend] = useState(
+    mistakeIds?.sourceUid !== user.uid ? mistakeIds?.sourceUid || "" : "",
+  );
+  const [friends, setFriends] = useState([]);
+  const [sharedWords, setSharedWords] = useState([]);
+  const [sharedLoading, setSharedLoading] = useState(false);
+  const [flipped, setFlipped] = useState(false);
+  const [answer, setAnswer] = useState("");
+  const [feedback, setFeedback] = useState(null);
+  const [errorType, setErrorType] = useState("meaning");
+  const [error, setError] = useState("");
+  const [session, setSession] = useState({ total: 0, correct: 0 });
+  const [done, setDone] = useState([]);
+  const [clock, setClock] = useState(Date.now());
+  const [busy, setBusy] = useState(false);
+  const activeDirection = practice === "listen" ? "listen" : direction;
+  const ownerUid = friend || user.uid;
+  useEffect(() => {
+    let active = true;
+    readCollection(`users/${user.uid}/friends`)
+      .then((rows) => {
+        if (active) setFriends(rows);
+      })
+      .catch(() => {
+        if (active) setError("No se pudo cargar la lista de amigos.");
+      });
+    return () => {
+      active = false;
     };
-
-    // --- MANEJO DE RESPUESTA (Con corrección de glitch) ---
-    const handleNextWord = async (answeredCorrectly) => {
-        if (isAnimating || isSwipingOut || !palabraActual || !user) return;
-
-        // 1. Iniciamos la animación de salida INMEDIATAMENTE
-        setIsSwipingOut(true);
-
-        // 2. Guardado en Firebase (sucede en paralelo a la animación)
-        if (!filters.friendPlay) {
-            const baseWordId = palabraActual.baseWordId || palabraActual.id;
-            const progressRef = doc(db, `users/${user.uid}/progress`, baseWordId);
-            const dataToUpdate = { lastReviewed: serverTimestamp() };
-
-            if (answeredCorrectly) {
-                dataToUpdate.correct = increment(1);
-                dataToUpdate.correctStreak = increment(1);
-
-                // Actualizar estadísticas de sesión
-                setSessionStats(prev => ({
-                    ...prev,
-                    correct: prev.correct + 1,
-                    total: prev.total + 1
-                }));
-
-                // Si hay filtros activos, registrar el evento para logros
-                if (filters.difficulty || filters.categoryId) {
-                    const eventsRef = collection(db, `users/${user.uid}/user_events`);
-                    addDoc(eventsRef, {
-                        type: 'correct_answer_with_filters',
-                        filters: {
-                            difficulty: filters.difficulty || null,
-                            categoryId: filters.categoryId || null,
-                        },
-                        timestamp: serverTimestamp()
-                    });
-                }
-
-            } else {
-                dataToUpdate.incorrect = increment(1);
-                dataToUpdate.correctStreak = 0;
-
-                // Actualizar estadísticas de sesión
-                setSessionStats(prev => ({
-                    ...prev,
-                    incorrect: [...prev.incorrect, palabraActual],
-                    total: prev.total + 1
-                }));
-            }
-
-            const userDocRef = doc(db, `users`, user.uid);
-            // "Fire and forget" para que no bloquee la UI
-            setDoc(userDocRef, { lastSeen: serverTimestamp() }, { merge: true });
-            setDoc(progressRef, dataToUpdate, { merge: true });
-        }
-
-        // 3. Esperamos 200ms (un poco más que los 150ms de la animación de salida CSS)
-        // para asegurar que la carta ya no es visible antes de resetearla.
-        setTimeout(() => {
-            setFlipped(false);      // Reseteamos el giro (ahora es invisible)
-            selectNextWord();       // Cambiamos los datos
-            setIsSwipingOut(false); // Traemos la nueva carta (animación de entrada)
-            // 4. Verificar logros tras actualizar progreso
-            setTimeout(() => checkAchievements(), 300);
-        }, 200);
+  }, [user.uid]);
+  useEffect(() => {
+    let active = true;
+    setSharedWords([]);
+    if (!friend) {
+      setSharedLoading(false);
+      return;
+    }
+    setSharedLoading(true);
+    setError("");
+    readCollection(`users/${friend}/words`)
+      .then((rows) => {
+        if (active) setSharedWords(expandVocabulary(rows));
+      })
+      .catch(() => {
+        if (active)
+          setError(
+            "Este amigo debe activar «Compartir vocabulario» y mantener la amistad para prestar su mazo.",
+          );
+      })
+      .finally(() => {
+        if (active) setSharedLoading(false);
+      });
+    return () => {
+      active = false;
     };
-
-    const handleFilterChange = (e) => {
-        const { name, value } = e.target;
-        if (name === 'type') {
-            setFilters(prev => ({ ...initialFilters, [name]: value }));
-        } else {
-            setFilters(prev => ({ ...prev, [name]: value }));
-        }
-    };
-
-    const clearFilters = () => { setFilters(initialFilters); setIsFilterMenuOpen(false); };
-    const handleFlip = () => { if (!isAnimating && !isSwipingOut) { setIsAnimating(true); setFlipped(!flipped); setTimeout(() => setIsAnimating(false), 300); } };
-    const toggleDirection = () => { setDirection(prev => prev === 'de-es' ? 'es-de' : 'de-es'); setFlipped(false); };
-
-    // Funciones para el Resumen Final
-    const handleRestartFullDeck = () => {
-        const shuffled = [...filteredWords].sort(() => Math.random() - 0.5);
-        setReviewDeck(shuffled);
-        setSessionStats({ correct: 0, incorrect: [], total: 0 });
-    };
-
-    const handleRetryMistakes = () => {
-        if (sessionStats.incorrect.length === 0) return;
-        const shuffled = [...sessionStats.incorrect].sort(() => Math.random() - 0.5);
-        setReviewDeck(shuffled);
-        // Reseteamos stats para la nueva "mini-ronda"
-        setSessionStats({ correct: 0, incorrect: [], total: 0 });
-    };
-
-    if (loading) return <div className="h-full flex items-center justify-center text-white/50 animate-pulse">Cargando mazo...</div>;
-    if (error) return <div className="h-full flex items-center justify-center text-red-400">{error}</div>;
-
+  }, [friend]);
+  useEffect(() => {
+    sessionId.current = crypto.randomUUID();
+    setDone([]);
+    setSession({ total: 0, correct: 0 });
+    setFlipped(false);
+    setAnswer("");
+    setFeedback(null);
+    setClock(Date.now());
+  }, [direction, practice, mode, filters, friend, mistakeIds]);
+  const source = friend ? sharedWords : study.items;
+  const filtered = source.filter((word) => {
+    if (filters.type && word.type !== filters.type) return false;
+    if (filters.categoryId && word.categoryId !== filters.categoryId)
+      return false;
+    if (
+      filters.difficulty &&
+      Number(word.difficulty) !== Number(filters.difficulty)
+    )
+      return false;
+    if (filters.gender && word.attributes?.gender !== filters.gender)
+      return false;
+    if (filters.case && word.attributes?.case !== filters.case) return false;
+    const id = studyId(word, activeDirection, ownerUid),
+      p = progressStats(study.progress[id]);
+    if (filters.performance === "new" && p.totalPlays) return false;
+    if (
+      filters.performance === "struggling" &&
+      (!p.incorrect || p.errorRate <= 0.3)
+    )
+      return false;
+    if (
+      mode === "mistakes" &&
+      !(mistakeIds ? mistakeIds.ids.includes(id) : p.lastRating === 1)
+    )
+      return false;
+    return true;
+  });
+  const today = localDay(clock);
+  // Pending introductions count towards the same daily budget as committed ones.
+  const pendingNew = new Set(
+    pendingReviews(user.uid)
+      .filter((event) => event.day === today && event.isNew)
+      .map((event) => event.cardId),
+  ).size;
+  const newLimit = Math.max(
+    0,
+    20 - (study.daily[today]?.newCards || 0) - pendingNew,
+  );
+  const queue = (
+    mode === "due"
+      ? dailyQueue(
+          filtered,
+          study.progress,
+          activeDirection,
+          ownerUid,
+          clock,
+          newLimit,
+        )
+      : filtered
+  ).filter((word) => !done.includes(studyId(word, activeDirection, ownerUid)));
+  if (mode === "random") {
+    const order = (item) =>
+      [...(sessionId.current + item.id)].reduce(
+        (hash, char) => Math.imul(hash ^ char.charCodeAt(0), 16777619) >>> 0,
+        2166136261,
+      );
+    queue.sort((a, b) => order(a) - order(b));
+  }
+  const word = queue[0];
+  const interval = (rating) => {
+    const due = scheduleCard(
+      study.progress[studyId(word, activeDirection, ownerUid)],
+      rating,
+      Date.now(),
+    ).schedule.due;
+    const minutes = Math.max(1, Math.round((due - Date.now()) / 60000));
+    return minutes < 60
+      ? `${minutes} min`
+      : minutes < 1440
+        ? `${Math.round(minutes / 60)} h`
+        : `${Math.round(minutes / 1440)} días`;
+  };
+  const categories = [
+    ...new Map(
+      source
+        .filter((w) => w.categoryId)
+        .map((w) => [
+          w.categoryId,
+          w.category || w.categoryName || w.categoryId,
+        ]),
+    ).entries(),
+  ];
+  const answerForm = (event) => {
+    event.preventDefault();
+    if (!word || !answer.trim()) return;
+    const result = checkAnswer(answer, word, activeDirection);
+    setFeedback(result);
+    setErrorType(result.type || "meaning");
+    setFlipped(true);
+  };
+  const rate = (rating) => {
+    if (!word || !flipped || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const cardId = studyId(word, activeDirection, ownerUid);
+      recordReview(user.uid, {
+        cardId,
+        wordId: word.baseWordId || word.id,
+        sourceUid: ownerUid,
+        direction: activeDirection,
+        german: word.german,
+        spanish: word.spanish,
+        rating,
+        errorType,
+        answer,
+        mode: practice,
+        filters,
+        sessionId: sessionId.current,
+        sessionComplete: queue.length === 1,
+        isNew: !study.progress[cardId]?.schedule,
+      });
+      setSession((previous) => ({
+        total: previous.total + 1,
+        correct: previous.correct + Number(rating > 1),
+      }));
+      setDone((previous) => [...previous, cardId]);
+      setFlipped(false);
+      setAnswer("");
+      setFeedback(null);
+      setErrorType("meaning");
+    } catch (failure) {
+      setError(`No se guardó el repaso. ${failure.message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const select = (label, value, change, options) => (
+    <label className="text-sm text-gray-300">
+      {label}
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(event) => change(event.target.value)}
+        className="block mt-1 w-full rounded-xl p-2 bg-gray-800 text-white"
+      >
+        {options.map(([value, label]) => (
+          <option key={value} value={value}>
+            {label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+  if (study.loading) return <p role="status">Cargando tu biblioteca…</p>;
+  if (study.error)
     return (
-        <div className="min-h-full flex flex-col relative">
-            {/* HEADER */}
-            <div className="flex justify-between items-center mb-6 pt-2">
-                <h1 className="text-4xl font-extrabold text-white tracking-tight drop-shadow-lg">Jugar</h1>
-                <div className="flex gap-2">
-                    <button onClick={toggleDirection} className="p-2.5 rounded-full bg-gray-800/60 hover:bg-gray-700 backdrop-blur-md border border-white/5 text-gray-300 transition-colors" title={direction === 'de-es' ? 'Alemán -> Español' : 'Español -> Alemán'}><SwapIcon /></button>
-                    <button onClick={() => setIsFilterMenuOpen(true)} className="p-2.5 rounded-full bg-gray-800/60 hover:bg-gray-700 backdrop-blur-md border border-white/5 text-gray-300 transition-colors"><FilterIcon /></button>
-                </div>
-            </div>
-
-            {/* TABS */}
-            <div className="bg-gray-800/60 p-1.5 rounded-2xl flex mb-8 backdrop-blur-md border border-white/5 shadow-inner">
-                {['random', 'review', 'smart'].map((m) => (
-                    <button key={m} onClick={() => setGameMode(m)} className={`flex-1 py-2 text-xs sm:text-sm font-bold rounded-xl transition-all duration-300 uppercase tracking-wide ${gameMode === m ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40 transform scale-[1.02]' : 'text-gray-400 hover:text-gray-200'}`}>{m === 'random' ? 'Aleatorio' : m === 'review' ? 'Repaso' : 'Inteligente'}</button>
-                ))}
-            </div>
-
-            {/* ÁREA DE LA CARTA (STACK) */}
-            <div className="flex-1 flex flex-col justify-center relative perspective-1000 mb-8 min-h-[350px]">
-                {filteredWords.length > 0 ? (
-                    gameMode === 'review' && reviewDeck.length === 0 ? (
-                        <div className="text-center p-8 bg-gray-800/80 rounded-3xl border border-white/10 backdrop-blur-md shadow-2xl max-w-md mx-auto">
-                            <div className="mb-6">
-                                <p className="text-4xl mb-2">🎉</p>
-                                <h2 className="text-3xl font-bold text-white mb-1">¡Repaso completado!</h2>
-                                <p className="text-gray-400 text-sm">Aquí tienes tu resumen:</p>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4 mb-8">
-                                <div className="bg-green-500/10 p-4 rounded-2xl border border-green-500/20">
-                                    <p className="text-3xl font-bold text-green-400">{sessionStats.correct}</p>
-                                    <p className="text-xs uppercase tracking-wider text-green-200/50 font-bold">Acertadas</p>
-                                </div>
-                                <div className="bg-red-500/10 p-4 rounded-2xl border border-red-500/20">
-                                    <p className="text-3xl font-bold text-red-400">{sessionStats.incorrect.length}</p>
-                                    <p className="text-xs uppercase tracking-wider text-red-200/50 font-bold">Falladas</p>
-                                </div>
-                            </div>
-
-                            <div className="space-y-3">
-                                <button
-                                    onClick={handleRestartFullDeck}
-                                    className="w-full py-4 font-bold bg-blue-600 rounded-xl hover:bg-blue-500 text-white transition-all shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
-                                    Jugar todo de nuevo
-                                </button>
-
-                                {sessionStats.incorrect.length > 0 && (
-                                    <button
-                                        onClick={handleRetryMistakes}
-                                        className="w-full py-4 font-bold bg-orange-500/10 border border-orange-500/50 text-orange-400 rounded-xl hover:bg-orange-500 hover:text-white transition-all shadow-lg flex items-center justify-center gap-2"
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
-                                        Repasar {sessionStats.incorrect.length} fallos
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    ) : !palabraActual ? (
-                        <div className="text-center text-white/50">Cargando palabra...</div>
-                    ) : (
-                        <div className="relative w-full">
-                            <div className="relative h-80 sm:h-96">
-                            <DeckBackground count={gameMode === 'review' ? reviewDeck.length : filteredWords.length} />
-                            <ActiveCard
-                                key={palabraActual.id}
-                                palabra={palabraActual}
-                                flipped={flipped}
-                                direction={direction}
-                                onClick={handleFlip}
-                                isSwipingOut={isSwipingOut}
-                            />
-                            </div>
-                            {flipped && !isSwipingOut && <WordLearningPanel word={palabraActual} />}
-                        </div>
-                    )
-                ) : (
-                    <div className="text-center p-8 bg-gray-800/50 rounded-3xl border border-white/5">
-                        <p className="text-xl font-semibold text-gray-300">No hay palabras</p>
-                        <p className="text-gray-500 mt-2 text-sm">Prueba a cambiar los filtros.</p>
-                    </div>
-                )}
-
-                {/* Contador sutil */}
-                {filteredWords.length > 0 && (
-                    <p className="text-center text-white/30 text-xs mt-8 font-medium tracking-wider uppercase">
-                        {gameMode === 'review' ? `${filteredWords.length - reviewDeck.length + 1} de ${filteredWords.length}` : `${filteredWords.length} palabras en el mazo`}
-                    </p>
-                )}
-            </div>
-
-            {/* BOTONES DE ACCIÓN */}
-            <div className="grid grid-cols-2 gap-4 mt-auto pt-4">
-                <button onClick={() => handleNextWord(false)} className="group py-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-400 font-bold text-lg shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white hover:border-red-500"><XIcon /> <span>No la sé</span></button>
-                <button onClick={() => handleNextWord(true)} className="group py-4 rounded-2xl bg-green-500/10 border border-green-500/30 text-green-400 font-bold text-lg shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2 hover:bg-green-500 hover:text-white hover:border-green-500"><CheckIcon /> <span>¡Acertada!</span></button>
-            </div>
-
-            {/* MODAL DE FILTROS */}
-            <div className={`fixed inset-0 z-50 transition-opacity duration-300 ${isFilterMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
-                <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsFilterMenuOpen(false)}></div>
-                <div className={`absolute top-0 right-0 h-full w-80 bg-slate-900 shadow-2xl border-l border-white/10 transform transition-transform duration-300 p-6 overflow-y-auto ${isFilterMenuOpen ? 'translate-x-0' : 'translate-x-full'}`}>
-                    <div className="flex justify-between items-center mb-8"><h3 className="text-2xl font-bold text-white">Configuración</h3><button onClick={() => setIsFilterMenuOpen(false)} className="text-gray-400 hover:text-white">✕</button></div>
-
-                    <div className="space-y-6">
-                        <div className="space-y-2"><label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Tipo</label><select name="type" value={filters.type} onChange={handleFilterChange} className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white outline-none focus:border-blue-500 transition-colors"><option value="">Todos</option><option value="noun">Sustantivo</option><option value="verb">Verbo</option><option value="adjective">Adjetivo</option><option value="preposition">Preposición</option></select></div>
-                        {filters.type === 'noun' && (<div className="space-y-2 animate-fade-in"><label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Género</label><select name="gender" value={filters.gender} onChange={handleFilterChange} className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white outline-none focus:border-blue-500"><option value="">Todos</option><option value="m">Masculino (der)</option><option value="f">Femenino (die)</option><option value="n">Neutro (das)</option></select></div>)}
-                        <div className="space-y-2"><label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Categoría</label><select name="categoryId" value={filters.categoryId} onChange={handleFilterChange} className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white outline-none focus:border-blue-500"><option value="">Todas</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name_es}</option>)}</select></div>
-                        <div className="space-y-2"><label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Dificultad</label><div className="flex gap-2">{[1, 2, 3, 4, 5].map(lvl => (<button key={lvl} onClick={() => handleFilterChange({ target: { name: 'difficulty', value: filters.difficulty === lvl.toString() ? '' : lvl.toString() } })} className={`flex-1 py-2 rounded-lg font-bold text-sm border ${filters.difficulty === lvl.toString() ? 'bg-blue-600 border-blue-600 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>{lvl}</button>))}</div></div>
-
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Rendimiento</label>
-                            <select name="performance" value={filters.performance} onChange={handleFilterChange} className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white outline-none focus:border-blue-500">
-                                <option value="">Todas las palabras</option>
-                                <option value="new">Solo Nuevas (Menos de 3 jugadas)</option>
-                                <option value="struggling">Difíciles (Falladas {'>'} 30%)</option>
-                                <option value="difficult">Muy Difíciles (Falladas {'>'} 50%)</option>
-                            </select>
-                        </div>
-                        <div className="space-y-2"><label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Modo Amigo</label><select name="friendPlay" value={filters.friendPlay || ''} onChange={handleFilterChange} className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white outline-none focus:border-purple-500"><option value="">Jugar solo</option>{friends.map(friend => (<option key={friend.id} value={friend.id}>Mazo de {friend.displayName}</option>))}</select></div>
-                    </div>
-
-                    <div className="mt-10 pt-6 border-t border-white/10 flex flex-col gap-3">
-                        <button onClick={() => setIsFilterMenuOpen(false)} className="w-full py-3 bg-blue-600 rounded-xl text-white font-bold shadow-lg shadow-blue-900/20 hover:bg-blue-500 transition-colors">Aplicar Filtros</button>
-                        <button onClick={clearFilters} className="w-full py-3 bg-transparent text-gray-400 text-sm font-medium hover:text-white transition-colors">Restablecer todo</button>
-                    </div>
-                </div>
-            </div>
-        </div>
+      <div role="alert">
+        <p>{study.error}</p>
+        <button onClick={study.reload}>Reintentar</button>
+      </div>
     );
+  return (
+    <div className="space-y-5 pb-8">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Tu repaso</h1>
+          <p className="text-sm text-gray-400">
+            {session.total} respuestas · {session.correct} recordadas ·{" "}
+            {queue.length} pendientes
+          </p>
+        </div>
+        <button
+          title={
+            direction === "de-es" ? "Alemán -> Español" : "Español -> Alemán"
+          }
+          onClick={() =>
+            setDirection(direction === "de-es" ? "es-de" : "de-es")
+          }
+          disabled={practice === "listen"}
+          className="rounded-xl p-3 bg-gray-800 text-sm disabled:opacity-40"
+        >
+          {direction === "de-es" ? "DE → ES" : "ES → DE"} ⇄
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        {select("Sesión", mode, setMode, [
+          ["due", "Repasos pendientes"],
+          ["review", "Todo el mazo"],
+          ["random", "Al azar"],
+          ["mistakes", "Últimos fallos"],
+        ])}
+        {select("Ejercicio", practice, setPractice, [
+          ["cards", "Tarjetas"],
+          ["type", "Escribir respuesta"],
+          ["listen", "Escuchar y escribir"],
+        ])}
+      </div>
+      <details className="rounded-xl border border-white/10 p-3">
+        <summary className="cursor-pointer text-gray-300">
+          Filtros y mazos
+        </summary>
+        <div className="grid grid-cols-2 gap-3 mt-3">
+          {select(
+            "Tipo",
+            filters.type,
+            (value) => setFilters({ ...filters, type: value }),
+            [
+              ["", "Todos"],
+              ["noun", "Sustantivos"],
+              ["verb", "Verbos"],
+              ["adjective", "Adjetivos"],
+              ["preposition", "Preposiciones"],
+              ["other", "Otros"],
+            ],
+          )}
+          {select(
+            "Categoría",
+            filters.categoryId,
+            (value) => setFilters({ ...filters, categoryId: value }),
+            [["", "Todas"], ...categories],
+          )}
+          {select(
+            "Dificultad",
+            filters.difficulty,
+            (value) => setFilters({ ...filters, difficulty: value }),
+            [
+              ["", "Todas"],
+              ["1", "1"],
+              ["2", "2"],
+              ["3", "3"],
+            ],
+          )}
+          {select(
+            "Progreso",
+            filters.performance,
+            (value) => setFilters({ ...filters, performance: value }),
+            [
+              ["", "Todos"],
+              ["new", "Sin practicar"],
+              ["struggling", "Me cuestan"],
+            ],
+          )}
+          {select(
+            "Artículo",
+            filters.gender,
+            (value) => setFilters({ ...filters, gender: value }),
+            [
+              ["", "Todos"],
+              ["m", "der"],
+              ["f", "die"],
+              ["n", "das"],
+            ],
+          )}
+          {select(
+            "Caso",
+            filters.case,
+            (value) => setFilters({ ...filters, case: value }),
+            [
+              ["", "Todos"],
+              ["Akkusativ", "Acusativo"],
+              ["Dativ", "Dativo"],
+              ["Genitiv", "Genitivo"],
+              ["Wechselpräposition", "Variable"],
+            ],
+          )}
+          {select("Mazo", friend, setFriend, [
+            ["", "Mi vocabulario"],
+            ...friends.map((f) => [f.id, f.displayName]),
+          ])}
+        </div>
+      </details>
+      <div role="status" className="text-xs text-gray-400">
+        {study.pending
+          ? `${study.pending} repasos guardados en este dispositivo, pendientes de sincronizar.`
+          : study.offline
+            ? "Biblioteca sin conexión."
+            : "Repasos sincronizados."}
+        {study.syncError && (
+          <span className="block text-amber-300">
+            {study.syncError}{" "}
+            <button onClick={study.retrySync} className="underline">
+              Reintentar sincronización
+            </button>
+          </span>
+        )}
+      </div>
+      {error && (
+        <p role="alert" className="text-red-300">
+          {error}
+        </p>
+      )}
+      {sharedLoading ? (
+        <p role="status">Cargando mazo compartido…</p>
+      ) : word ? (
+        <>
+          {practice === "listen" && !flipped ? (
+            <div className="rounded-3xl bg-gray-800 p-10 text-center space-y-5">
+              <h2 className="text-2xl">Escucha y escribe en alemán</h2>
+              <AudioButton text={germanAnswer(word)} />
+              <p className="text-sm text-gray-400">
+                Incluye el artículo si es un sustantivo.
+              </p>
+            </div>
+          ) : (
+            <ActiveCard
+              palabra={word}
+              flipped={flipped}
+              direction={practice === "listen" ? "es-de" : direction}
+              onClick={() => {
+                setFlipped(!flipped);
+                setFeedback(null);
+              }}
+              isSwipingOut={false}
+            />
+          )}
+          {practice !== "cards" && !flipped && (
+            <form onSubmit={answerForm} className="flex gap-2">
+              <input
+                aria-label="Tu respuesta"
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                value={answer}
+                onChange={(event) => setAnswer(event.target.value)}
+                className="min-w-0 flex-1 p-3 bg-gray-800 rounded-xl"
+                placeholder="Tu respuesta"
+              />
+              <button
+                className="p-3 bg-blue-600 rounded-xl"
+                disabled={!answer.trim()}
+              >
+                Comprobar
+              </button>
+            </form>
+          )}
+          {!flipped && (
+            <button
+              onClick={() => setFlipped(true)}
+              className="w-full py-3 rounded-xl bg-gray-800"
+            >
+              Mostrar respuesta
+            </button>
+          )}
+          {flipped && (
+            <>
+              {feedback && (
+                <div role="status" className="p-4 bg-gray-800 rounded-xl">
+                  <p
+                    className={
+                      feedback.correct ? "text-green-300" : "text-amber-300"
+                    }
+                  >
+                    {feedback.message}
+                  </p>
+                  <p className="mt-2">
+                    Solución: <strong>{feedback.expected}</strong>
+                  </p>
+                  {!feedback.correct && (
+                    <p className="text-xs text-gray-400 mt-2">
+                      Si tu alternativa es válida, puedes marcar «Bien». Añádela
+                      en la biblioteca para aceptarla en próximos ejercicios.
+                    </p>
+                  )}
+                </div>
+              )}
+              <AudioButton text={germanAnswer(word)} />
+              <label className="block text-sm text-gray-300">
+                Si fallaste, ¿qué costó?
+                <select
+                  aria-label="Tipo de error"
+                  value={errorType}
+                  onChange={(e) => setErrorType(e.target.value)}
+                  className="ml-2 p-2 rounded-lg bg-gray-800"
+                >
+                  {Object.entries(ERROR_LABELS).map(([key, label]) => (
+                    <option value={key} key={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {RATINGS.map(([rating, label]) => (
+                  <button
+                    key={rating}
+                    aria-label={label}
+                    disabled={busy}
+                    onClick={() => rate(rating)}
+                    className={`p-3 rounded-xl font-semibold ${rating === 1 ? "bg-red-900/70" : "bg-teal-900/70"}`}
+                  >
+                    {label}
+                    <small className="block text-xs font-normal opacity-70">
+                      {interval(rating)}
+                    </small>
+                  </button>
+                ))}
+              </div>
+              <WordLearningPanel word={word} />
+            </>
+          )}
+        </>
+      ) : (
+        <section className="rounded-3xl bg-gray-800 p-7 text-center space-y-3">
+          <h2 className="text-2xl font-bold">
+            {source.length ? "Sesión terminada" : "Todavía no hay palabras"}
+          </h2>
+          <p className="text-gray-300">
+            {source.length
+              ? "Los repasos tienen prioridad. En la sesión de pendientes se introducen hasta 20 tarjetas nuevas al día entre todas las direcciones."
+              : "Añade vocabulario desde Biblioteca para empezar."}
+          </p>
+          {source.length > 0 && (
+            <button
+              onClick={() => {
+                setDone([]);
+                sessionId.current = crypto.randomUUID();
+                setClock(Date.now());
+              }}
+              className="p-3 bg-blue-600 rounded-xl"
+            >
+              Comprobar próximos repasos
+            </button>
+          )}
+        </section>
+      )}
+    </div>
+  );
 }
-
+function Game({ user }) {
+  const [tab, setTab] = useState("cards");
+  const [mistakeIds, setMistakeIds] = useState(null);
+  return (
+    <div>
+      <nav aria-label="Práctica" className="flex gap-2 mb-5">
+        {[
+          ["cards", "Repasar"],
+          ["contrasts", "Contrastes"],
+          ["mistakes", "Mis errores"],
+        ].map(([value, label]) => (
+          <button
+            key={value}
+            onClick={() => {
+              setTab(value);
+              setMistakeIds(null);
+            }}
+            className={`flex-1 text-sm p-3 rounded-xl ${tab === value ? "bg-blue-600" : "bg-gray-800"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+      {tab === "cards" && <StudyCards user={user} mistakeIds={mistakeIds} />}
+      {tab === "contrasts" && <ContrastPractice user={user} />}
+      {tab === "mistakes" && (
+        <MistakesNotebook
+          user={user}
+          onPractice={(ids) => {
+            setMistakeIds(ids);
+            setTab("cards");
+          }}
+        />
+      )}
+    </div>
+  );
+}
 export default Game;

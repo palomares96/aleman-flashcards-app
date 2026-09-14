@@ -4,10 +4,13 @@ import { composeSeparableVerb, enrichWord, normalizePrefixes } from '../utils/vo
 export default function WordLearningPanel({ word, showFamily = true }) {
   const enriched = enrichWord(word);
   const learning = enriched.learning || {};
+  const grammar = enriched.grammar || {};
+  const labels = { plural: 'Plural', principalParts: 'Formas principales', auxiliary: 'Auxiliar del Perfekt', pattern: 'Construcción', mainClause: 'Oración principal', subordinateClause: 'Oración subordinada', registerEs: 'Matiz' };
+  const grammarRows = Object.entries(labels).filter(([key]) => grammar[key]);
   const family = showFamily && word.type === 'verb' && !word.isDerived
     ? normalizePrefixes(enriched.attributes.separablePrefixes) : [];
   const validFamily = family.filter(item => composeSeparableVerb(enriched.german, item.prefix));
-  if (!learning.usageEs && !learning.exampleDe && !validFamily.length) return null;
+  if (!learning.usageEs && !learning.exampleDe && !validFamily.length && !grammarRows.length) return null;
   return (
     <aside aria-label="Ayuda para aprender la palabra" className="relative mt-6 space-y-4 text-left">
       {(learning.usageEs || learning.exampleDe) && (
@@ -20,6 +23,7 @@ export default function WordLearningPanel({ word, showFamily = true }) {
           </div>}
         </section>
       )}
+      {grammarRows.length > 0 && <section className="p-5 rounded-2xl border border-blue-400/20 bg-blue-950/20"><h3 className="font-bold text-blue-200 mb-3">Gramática</h3><dl className="space-y-3">{grammarRows.map(([key, label]) => <div key={key}><dt className="text-xs text-gray-400">{label}</dt><dd className="text-sm mt-1">{grammar[key]}</dd></div>)}</dl></section>}
       {validFamily.length > 0 && (
         <section className="rounded-2xl border border-orange-400/20 bg-orange-950/20 p-5">
           <h3 className="text-sm font-bold text-orange-200">Familia de {enriched.german}</h3>

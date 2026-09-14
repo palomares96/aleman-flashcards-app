@@ -1,11 +1,13 @@
+import { useStudyData } from '../hooks/useStudyData.js';
+import { studyId, progressStats } from '../utils/study.js';
+import { readCollection } from '../services/repository.js';
+import SavedExamples from './SavedExamples.jsx';
 // src/components/SentenceMode.jsx
 
-import React, { useState, useEffect } from 'react';
-import { expandVocabulary } from '../utils/vocabulary.js';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase.js';
-import { collection, getDocs, addDoc, serverTimestamp, query, orderBy, limit } from 'firebase/firestore';
+import { collection, addDoc, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { aiService } from '../services/aiService';
-import { getApp } from "firebase/app";
 
 // --- ICONOS ---
 const SpinnerIcon = () => <svg className="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>;
@@ -75,9 +77,13 @@ const SentenceRenderer = ({ sentence }) => {
 };
 
 function SentenceMode({ user, userProfile }) {
-    const [allWords, setAllWords] = useState([]);
+    const study = useStudyData(user.uid);
+    const [context, setContext] = useState('Vida cotidiana');
+    const [provider, setProvider] = useState('');
+    const [savedVersion, setSavedVersion] = useState(0);
     const [categories, setCategories] = useState([]);
     const [direction, setDirection] = useState('de-es');
+    const allWords = useMemo(() => study.items.map(word => ({ ...word, progress: progressStats(study.progress[studyId(word, direction, user.uid)]) })), [study.items, study.progress, direction, user.uid]);
     const [wordCounts, setWordCounts] = useState({ noun: 1, verb: 1, adjective: 1, preposition: 0, other: 0 });
     const [filters, setFilters] = useState({ categoryId: '', difficulty: '', performance: '' });
     const [isConfigOpen, setIsConfigOpen] = useState(false);
@@ -104,6 +110,9 @@ function SentenceMode({ user, userProfile }) {
     const [idealTranslation, setIdealTranslation] = useState('');
     const [selectedWordsList, setSelectedWordsList] = useState([]);
     const [userTranslation, setUserTranslation] = useState('');
+    const [attemptId, setAttemptId] = useState(() => crypto.randomUUID());
+    const [unsavedAttempt, setUnsavedAttempt] = useState(null);
+    const [savingAttempt, setSavingAttempt] = useState(false);
     const [evaluation, setEvaluation] = useState(null); // { score: 8, feedback: "...", betterTranslation: "..." }
     const [loading, setLoading] = useState(false);
     const [evaluating, setEvaluating] = useState(false);
@@ -125,39 +134,21 @@ function SentenceMode({ user, userProfile }) {
     };
 
     useEffect(() => {
-        const fetchData = async () => {
-            if (!user) return;
-            try {
-                const [wordsSnap, catsSnap, progressSnap] = await Promise.all([
-                    getDocs(query(collection(db, `users/${user.uid}/words`), limit(200))),
-                    getDocs(query(collection(db, "categories"), limit(100))),
-                    getDocs(query(collection(db, `users/${user.uid}/progress`), limit(200)))
-                ]);
-
-                const progressMap = {};
-                progressSnap.forEach(doc => progressMap[doc.id] = doc.data());
-
-                const baseWords = wordsSnap.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data(),
-                    progress: progressMap[doc.id] || { totalPlays: 0, errorRate: 0 }
-                }));
-
-                const expandedWords = expandVocabulary(baseWords);
-
-                setAllWords(expandedWords);
-                setCategories(catsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-            } catch (e) { console.error(e); setError("Error al cargar datos."); }
-        };
-        fetchData();
-    }, [user]);
+        let active = true;
+        readCollection('categories').then(rows => { if (active) setCategories(rows); }).catch(() => { if (active) setError('No se pudieron cargar las categorías.'); });
+        return () => { active = false; };
+    }, []);
 
     const generateSentence = async () => {
+        if (loading || evaluating) return;
+        if (Object.values(wordCounts).reduce((sum, count) => sum + count, 0) > 6) { setError('Selecciona como máximo 6 palabras en los ajustes.'); return; }
         setLoading(true);
         setError('');
         setEvaluation(null);
         setUserTranslation('');
         setCurrentSentence('');
+        setAttemptId(crypto.randomUUID());
+        setUnsavedAttempt(null);
 
         let pool = allWords.filter(w => {
             if (filters.categoryId && w.categoryId !== filters.categoryId) return false;
@@ -170,7 +161,7 @@ function SentenceMode({ user, userProfile }) {
         const pickRandom = (type, count) => {
             const typePool = pool.filter(w => w.type === type);
             for (let i = 0; i < count; i++) {
-                if (typePool.length > 0) selected.push(typePool[Math.floor(Math.random() * typePool.length)]);
+                if (typePool.length > 0) selected.push(typePool.splice(Math.floor(Math.random() * typePool.length), 1)[0]);
             }
         };
 
@@ -208,10 +199,12 @@ function SentenceMode({ user, userProfile }) {
                 verbMood: verbMood,
                 voice: voice,
                 keyword: keyword,
+                context,
             }, userProfile?.tier || 'free');
 
             // La función ahora devuelve un objeto JSON
             setCurrentSentence(resultData.sentence);
+            setProvider(resultData.provider || '');
             setIdealTranslation(resultData.idealTranslation);
 
         } catch (err) {
@@ -222,13 +215,20 @@ function SentenceMode({ user, userProfile }) {
         }
     };
 
+    const persistAttempt = async attempt => {
+        setSavingAttempt(true);
+        try { await setDoc(doc(db, `users/${user.uid}/sentenceAttempts/${attemptId}`), attempt); setUnsavedAttempt(null); }
+        catch (failure) { setError(`La evaluación está lista, pero no se guardó el intento. ${failure.message}`); }
+        finally { setSavingAttempt(false); }
+    };
+
     const checkTranslation = async (e) => {
         e.preventDefault();
-        if (!userTranslation.trim()) return;
+        if (!userTranslation.trim() || evaluating || evaluation) return;
         setEvaluating(true);
         try {
-            const sourceLang = direction === 'de-es' ? 'Alemán' : 'Español';
-            const targetLang = direction === 'de-es' ? 'Español' : 'Alemán';
+            const sourceLang = direction === 'de-es' ? 'DE' : 'ES';
+            const targetLang = direction === 'de-es' ? 'ES' : 'DE';
 
             const resultData = await aiService.evaluateTranslation({
                 originalSentence: currentSentence,
@@ -241,7 +241,7 @@ function SentenceMode({ user, userProfile }) {
 
             // Guardar el intento de frase en Firestore
             if (user) {
-                await addDoc(collection(db, `users/${user.uid}/sentenceAttempts`), {
+                const attempt = {
                     sentence: currentSentence,
                     userTranslation: userTranslation,
                     score: resultData.score,
@@ -256,17 +256,20 @@ function SentenceMode({ user, userProfile }) {
                     verbMood,
                     voice,
                     keyword,
-                });
+                };
+                setUnsavedAttempt(attempt);
+                await persistAttempt(attempt);
             }
         } catch (err) {
             console.error(err);
-            setError("Error al evaluar.");
+            setError(err.message || "Error al evaluar o guardar el intento.");
         } finally {
             setEvaluating(false);
         }
     };
 
     const saveSettings = () => {
+        setCurrentSentence(''); setEvaluation(null); setUserTranslation('');
         setDirection(pendingSettings.direction);
         setFilters(pendingSettings.filters);
         setWordCounts(pendingSettings.wordCounts);
@@ -306,6 +309,13 @@ function SentenceMode({ user, userProfile }) {
 
     return (
         <div className="w-full max-w-3xl mx-auto pb-20">
+            {unsavedAttempt && <div role="status" className="mb-4 text-amber-300">El intento aún no está guardado. <button disabled={savingAttempt} onClick={() => persistAttempt(unsavedAttempt)} className="underline">Reintentar guardado</button></div>}
+            {study.error && <p role="alert">{study.error} <button onClick={study.reload}>Reintentar</button></p>}
+            <label className="block mb-4 text-sm text-gray-300">Contexto para nuevas frases<select value={context} onChange={e => setContext(e.target.value)} className="block mt-2 p-3 bg-gray-800 rounded-xl w-full">{['Vida cotidiana', 'Zürich y transporte público', 'Trabajo y reuniones', 'Compras', 'Viajes'].map(value => <option key={value}>{value}</option>)}</select></label>
+            <p className="text-xs text-gray-400 mb-4">Usa IA local cuando esté disponible; en otro caso, la nube con límite diario. Los ejemplos guardados no requieren IA.</p>
+            <SavedExamples user={user} version={savedVersion} disabled={loading || evaluating || !!unsavedAttempt} onUse={example => { setAttemptId(crypto.randomUUID()); setUnsavedAttempt(null); setDirection(example.direction); setCurrentSentence(example.sentence); setIdealTranslation(example.idealTranslation); setUserTranslation(''); setEvaluation(null); setProvider('saved'); setSelectedWordsList([]); }} />
+            {currentSentence && <div className="flex gap-3 items-center my-4"><span className="text-xs text-gray-400">{({ local: 'IA del dispositivo', cloud: 'IA en la nube', cache: 'Ejemplo reutilizado', saved: 'Ejemplo guardado' })[provider]}</span><button className="text-sm text-blue-300 underline" onClick={async () => { try { await addDoc(collection(db, `users/${user.uid}/savedExamples`), { sentence: currentSentence, idealTranslation, direction, context, createdAt: serverTimestamp() }); setSavedVersion(value => value + 1); } catch (e) { setError(`No se pudo guardar el ejemplo. ${e.message}`); } }}>Guardar ejemplo</button></div>}
+
             <div className="flex justify-between items-center mb-6">
                 <div className="flex items-center gap-3">
                     <h1 className="text-3xl font-bold text-gray-300">Modo Frase</h1>
@@ -320,7 +330,7 @@ function SentenceMode({ user, userProfile }) {
                         <span className="px-2 py-0.5 text-[10px] font-bold bg-gray-800 text-gray-500 rounded-full border border-gray-700 uppercase tracking-wider">Free Plan</span>
                     )}
                 </div>
-                <button onClick={openConfig} className={`p-2 rounded-lg transition-colors ${isConfigOpen ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-700'}`}><SettingsIcon /></button>
+                <button disabled={loading || evaluating || !!unsavedAttempt} onClick={openConfig} className={`p-2 rounded-lg transition-colors ${isConfigOpen ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-700'}`}><SettingsIcon /></button>
             </div>
 
             {isConfigOpen && pendingSettings && (
@@ -489,7 +499,7 @@ function SentenceMode({ user, userProfile }) {
                                         </div>
                                     </div>
                                     <div className="mt-4 flex justify-end">
-                                        <button onClick={generateSentence} className="flex items-center gap-2 text-sm font-bold text-white bg-gray-700 hover:bg-gray-600 px-5 py-2.5 rounded-lg transition-all border border-gray-600 hover:shadow-lg">
+                                        <button disabled={loading || evaluating || !!unsavedAttempt} onClick={generateSentence} className="flex items-center gap-2 text-sm font-bold text-white bg-gray-700 hover:bg-gray-600 px-5 py-2.5 rounded-lg transition-all border border-gray-600 hover:shadow-lg">
                                             <RefreshIcon /> Siguiente Frase
                                         </button>
                                     </div>
@@ -501,7 +511,7 @@ function SentenceMode({ user, userProfile }) {
             </div>
 
             {!currentSentence && !loading && (
-                <button onClick={generateSentence} className="mt-8 mx-auto flex items-center gap-2 text-white font-bold bg-blue-600 hover:bg-blue-500 px-8 py-3 rounded-full shadow-lg transform hover:-translate-y-1 transition-all">
+                <button disabled={loading || evaluating || !!unsavedAttempt} onClick={generateSentence} className="mt-8 mx-auto flex items-center gap-2 text-white font-bold bg-blue-600 hover:bg-blue-500 px-8 py-3 rounded-full shadow-lg transform hover:-translate-y-1 transition-all">
                     <RefreshIcon /> Generar Primera Frase
                 </button>
             )}

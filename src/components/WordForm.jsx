@@ -1,8 +1,11 @@
+import GrammarFields from './GrammarFields.jsx';
+import { lexicalKey } from '../utils/transfer.js';
+import { readCollection, notifyVocabularyChanged } from '../services/repository.js';
 // src/components/WordForm.jsx
 
 import React, { useState, useEffect } from 'react';
-import { db } from '../firebase.js'; 
-import { collection, getDocs, query, where, addDoc, serverTimestamp, limit } from 'firebase/firestore';
+import { db } from '../firebase.js';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import LearningFields from './LearningFields.jsx';
 import { normalizeGerman, prepareWordForSave } from '../utils/vocabulary.js';
 import { initialFormData } from '../config.js';
@@ -13,12 +16,12 @@ function WordForm({ user }) {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [feedback, setFeedback] = useState({ type: '', message: '' });
 
-    useEffect(() => { 
-        const fetchCategories = async () => { 
-            const snapshot = await getDocs(query(collection(db, "categories"), limit(100))); 
-            setCategories(snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name_es }))); 
-        }; 
-        fetchCategories(); 
+    useEffect(() => {
+        const fetchCategories = async () => {
+            const rows = await readCollection('categories');
+            setCategories(rows.map(row => ({ id: row.id, name: row.name_es })));
+        };
+        fetchCategories().catch(() => setFeedback({ type: 'error', message: 'No se pudieron cargar las categorías. Puedes reabrir esta pestaña para reintentar.' }));
     }, []);
 
     const handleChange = (e) => {
@@ -27,7 +30,7 @@ function WordForm({ user }) {
         } else if (name in initialFormData.attributes) { setFormData(p => ({...p, attributes: {...p.attributes, [name]: type === 'checkbox' ? checked : value }}));
         } else { setFormData(p => ({...p, [name]: value })); }
     };
-    
+
     const addPrefix = () => setFormData(p => ({...p, attributes: {...p.attributes, separablePrefixes: [...p.attributes.separablePrefixes, { prefix: '', meaning: '' }]}}));
     const removePrefix = (index) => setFormData(p => ({...p, attributes: {...p.attributes, separablePrefixes: p.attributes.separablePrefixes.filter((_, i) => i !== index)}}));
 
@@ -43,9 +46,9 @@ function WordForm({ user }) {
 
             // 2. CHECK DUPLICADOS
             const userWordsCollection = collection(db, `users/${user.uid}/words`);
-            const duplicateQuery = query(userWordsCollection, where("german", "==", cleanGerman), limit(1));
-            if (!(await getDocs(duplicateQuery)).empty) {
-                setFeedback({ type: 'error', message: 'Esta palabra ya existe.' });
+            const existingWords = await readCollection(`users/${user.uid}/words`);
+            if (existingWords.some(word => lexicalKey(word) === lexicalKey({ ...formData, german: cleanGerman }))) {
+                setFeedback({ type: 'error', message: 'Esta palabra y este significado ya existen.' });
                 setIsSubmitting(false);
                 return;
             }
@@ -58,14 +61,14 @@ function WordForm({ user }) {
             if (categoryName) {
                 // Buscamos insensible a mayúsculas
                 const existingCat = categories.find(c => c.name.toLowerCase() === categoryName.toLowerCase());
-                
+
                 if (existingCat) {
                     categoryId = existingCat.id;
                 } else {
                     // CREAR NUEVA CATEGORÍA
                     try {
-                        const newCatRef = await addDoc(collection(db, "categories"), { 
-                                name_es: categoryName, 
+                        const newCatRef = await addDoc(collection(db, "categories"), {
+                                createdBy: user.uid, name_es: categoryName,
                                 name_de: categoryName, // Placeholder
                                 createdAt: serverTimestamp()
                             });
@@ -87,6 +90,7 @@ function WordForm({ user }) {
                 difficulty: parseInt(formData.difficulty),
                 categoryId: categoryId || "", // Aseguramos string vacío si es null
                 attributes: {},
+                ...(formData.grammar ? { grammar: formData.grammar } : {}),
                 createdAt: serverTimestamp()
             };
 
@@ -102,13 +106,14 @@ function WordForm({ user }) {
                 const prefixes = formData.attributes.separablePrefixes
                     .filter(p => p.prefix.trim() && p.meaning.trim())
                     .map(p => ({ ...p, prefix: p.prefix.trim().toLowerCase() }));
-                
+
                 if (prefixes.length > 0) newWord.attributes.separablePrefixes = prefixes;
             }
 
             // 5. GUARDAR
             if (formData.learning) newWord.learning = formData.learning;
             await addDoc(userWordsCollection, prepareWordForSave(newWord));
+            notifyVocabularyChanged();
 
             setFeedback({ type: 'success', message: `¡"${cleanGerman}" guardada!` });
             setFormData(initialFormData);
@@ -149,18 +154,18 @@ function WordForm({ user }) {
                     </div>
                 </div>
                                 {(formData.type === 'adjective' || formData.type === 'other') && <p className="text-sm text-gray-500 italic text-center">No hay atributos especiales para este tipo.</p>}
-                
+
                 {/* INPUT DE CATEGORÍA CON DATALIST */}
                 <div>
                     <label htmlFor="category" className="block mb-2 text-sm text-gray-400">Categoría</label>
-                    <input 
-                        name="category" 
-                        value={formData.category} 
-                        onChange={handleChange} 
-                        list="categories-list" 
-                        id="category" 
-                        placeholder="Elige o escribe una nueva..." 
-                        className="w-full p-3 bg-gray-700 rounded-md text-white" 
+                    <input
+                        name="category"
+                        value={formData.category}
+                        onChange={handleChange}
+                        list="categories-list"
+                        id="category"
+                        placeholder="Elige o escribe una nueva..."
+                        className="w-full p-3 bg-gray-700 rounded-md text-white"
                     />
                     <datalist id="categories-list">
                         {categories.map(cat => <option key={cat.id} value={cat.name} />)}
@@ -183,7 +188,8 @@ function WordForm({ user }) {
                     </div>)}
                     <button type="button" onClick={addPrefix} className="text-sm text-blue-400 hover:text-blue-300">+ Añadir prefijo</button>
                 </div>}
-                
+
+                <GrammarFields word={formData} onChange={grammar => setFormData(prev => ({ ...prev, grammar }))} />
                 <LearningFields word={formData} onChange={learning => setFormData(prev => ({ ...prev, learning }))} />
                 <div className="pt-2 h-12"><button type="submit" disabled={isSubmitting} className="w-full p-4 font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-gray-500">{isSubmitting ? 'Guardando...' : 'Guardar'}</button>{feedback.message && <p className={`mt-2 text-sm text-center ${feedback.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{feedback.message}</p>}</div>
             </form>

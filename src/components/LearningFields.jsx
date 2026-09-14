@@ -21,6 +21,7 @@ export default function LearningFields({ word, onChange }) {
             className="mt-1 block w-full rounded-lg bg-gray-800 border border-white/10 p-3 text-white focus:border-teal-400 outline-none" />
         </label>
       ))}
+      {['De', 'Es'].map(lang => <label key={lang} className="block text-sm text-gray-300">Respuestas alternativas ({lang === 'De' ? 'alemán' : 'español'}, una por línea)<textarea rows={2} value={(learning['alternatives' + lang] || []).join('\n')} onChange={event => update('alternatives' + lang, event.target.value.split('\n'))} className="mt-1 block w-full rounded-lg bg-gray-800 p-3 text-white" /></label>)}
     </fieldset>
   );
 }

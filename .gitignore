@@ -47,3 +47,11 @@ dist-ssr
 
 # Private vocabulary migration plans / snapshots
 .migration-backups/
+
+# Local emulator and test output
+firestore-debug.log
+ui-debug.log
+database-debug.log
+.test-runtime/
+
+/dist-verified/
