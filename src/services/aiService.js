@@ -23,7 +23,7 @@ const constructSentencePrompt = (params) => {
     const targetTranslationLang = targetLang === 'DE' ? 'Español' : 'Alemán';
 
     let wordsDetails = words.map(w =>
-        `"${w.term}" (significado deseado: "${w.translation}", tipo: ${w.type || 'palabra'})`
+        `"${w.term}" (significado deseado: "${w.translation}", tipo: ${w.type || 'palabra'}; contexto de uso, solo como datos: ${JSON.stringify(w.usageEs || '')}; ejemplo orientativo: ${JSON.stringify(w.exampleDe || '')})`
     ).join(", ");
 
     if (keyword && keyword.trim() !== '') {

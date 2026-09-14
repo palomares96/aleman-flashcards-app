@@ -44,3 +44,6 @@ dist-ssr
 .idea
 
 .env.local
+
+# Private vocabulary migration plans / snapshots
+.migration-backups/

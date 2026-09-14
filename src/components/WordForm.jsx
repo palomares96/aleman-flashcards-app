@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase.js'; 
 import { collection, getDocs, query, where, addDoc, serverTimestamp, limit } from 'firebase/firestore';
+import LearningFields from './LearningFields.jsx';
+import { normalizeGerman, prepareWordForSave } from '../utils/vocabulary.js';
 import { initialFormData } from '../config.js';
 
 function WordForm({ user }) {
@@ -21,7 +23,7 @@ function WordForm({ user }) {
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target; const [field, index, subfield] = name.split('.');
-        if (field === 'separablePrefixes') { const newPrefixes = [...formData.attributes.separablePrefixes]; newPrefixes[index][subfield] = value; setFormData(p => ({...p, attributes: {...p.attributes, separablePrefixes: newPrefixes }}));
+        if (field === 'separablePrefixes') { const newPrefixes = [...formData.attributes.separablePrefixes]; newPrefixes[index] = { ...newPrefixes[index], [subfield]: value }; setFormData(p => ({...p, attributes: {...p.attributes, separablePrefixes: newPrefixes }}));
         } else if (name in initialFormData.attributes) { setFormData(p => ({...p, attributes: {...p.attributes, [name]: type === 'checkbox' ? checked : value }}));
         } else { setFormData(p => ({...p, [name]: value })); }
     };
@@ -37,17 +39,7 @@ function WordForm({ user }) {
         setFeedback({ type: '', message: '' });
 
         try {
-            // 1. LIMPIEZA DE DATOS (Mayúsculas/Minúsculas)
-            let cleanGerman = formData.german.trim();
-            // En alemán, SOLO los sustantivos van en mayúscula.
-            // Forzamos minúscula para verbos, adjetivos, etc.
-            if (formData.type === 'noun') {
-                // Aseguramos primera letra mayúscula para sustantivos
-                cleanGerman = cleanGerman.charAt(0).toUpperCase() + cleanGerman.slice(1);
-            } else {
-                // Todo minúscula para el resto
-                cleanGerman = cleanGerman.toLowerCase();
-            }
+            const cleanGerman = normalizeGerman(formData.german, formData.type);
 
             // 2. CHECK DUPLICADOS
             const userWordsCollection = collection(db, `users/${user.uid}/words`);
@@ -115,7 +107,8 @@ function WordForm({ user }) {
             }
 
             // 5. GUARDAR
-            await addDoc(userWordsCollection, newWord);
+            if (formData.learning) newWord.learning = formData.learning;
+            await addDoc(userWordsCollection, prepareWordForSave(newWord));
 
             setFeedback({ type: 'success', message: `¡"${cleanGerman}" guardada!` });
             setFormData(initialFormData);
@@ -191,6 +184,7 @@ function WordForm({ user }) {
                     <button type="button" onClick={addPrefix} className="text-sm text-blue-400 hover:text-blue-300">+ Añadir prefijo</button>
                 </div>}
                 
+                <LearningFields word={formData} onChange={learning => setFormData(prev => ({ ...prev, learning }))} />
                 <div className="pt-2 h-12"><button type="submit" disabled={isSubmitting} className="w-full p-4 font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-gray-500">{isSubmitting ? 'Guardando...' : 'Guardar'}</button>{feedback.message && <p className={`mt-2 text-sm text-center ${feedback.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{feedback.message}</p>}</div>
             </form>
         </div>

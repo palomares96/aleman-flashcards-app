@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import VocabularyEnrichmentStatus from './VocabularyEnrichmentStatus.jsx';
 import Game from './Game.jsx';
 import SentenceMode from './SentenceMode.jsx';
 // Importamos los nuevos contenedores
@@ -123,6 +124,7 @@ function AppLayout({ user, userProfile, onShowPrivacy }) {
                     <div className="fixed bottom-0 right-0 w-80 h-80 bg-purple-600/10 rounded-full blur-3xl translate-x-1/3 translate-y-1/3 pointer-events-none"></div>
 
                     <div className="relative z-10 h-full">
+                        <VocabularyEnrichmentStatus user={user} />
                         {banner && <TrophyBanner trophy={banner} onClose={() => setBanner(null)} />}
                         {view === 'game' && <Game user={user} onTrophyUnlock={(t) => setBanner(t)} />}
                         {view === 'sentenceMode' && <SentenceMode user={user} userProfile={userProfile} />}

@@ -1,6 +1,7 @@
 // src/components/SentenceMode.jsx
 
 import React, { useState, useEffect } from 'react';
+import { expandVocabulary } from '../utils/vocabulary.js';
 import { db } from '../firebase.js';
 import { collection, getDocs, addDoc, serverTimestamp, query, orderBy, limit } from 'firebase/firestore';
 import { aiService } from '../services/aiService';
@@ -142,21 +143,7 @@ function SentenceMode({ user, userProfile }) {
                     progress: progressMap[doc.id] || { totalPlays: 0, errorRate: 0 }
                 }));
 
-                const expandedWords = [];
-                baseWords.forEach(word => {
-                    expandedWords.push(word);
-                    if (word.type === 'verb' && word.attributes?.separablePrefixes) {
-                        word.attributes.separablePrefixes.forEach(p => {
-                            expandedWords.push({
-                                ...word,
-                                id: `${word.id}_${p.prefix}`,
-                                german: p.prefix + word.german,
-                                spanish: p.meaning,
-                                isDerived: true
-                            });
-                        });
-                    }
-                });
+                const expandedWords = expandVocabulary(baseWords);
 
                 setAllWords(expandedWords);
                 setCategories(catsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -206,7 +193,9 @@ function SentenceMode({ user, userProfile }) {
             term: targetGenLang === 'DE' ? w.german : w.spanish,
             translation: targetGenLang === 'DE' ? w.spanish : w.german, // <-- AÑADIDO
             type: w.type,
-            gender: w.attributes?.gender || null
+            gender: w.attributes?.gender || null,
+            usageEs: w.learning?.usageEs || '',
+            exampleDe: w.learning?.exampleDe || ''
         }));
 
         try {
