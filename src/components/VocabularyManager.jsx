@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase.js'; 
 import { getDocs, collection, addDoc, doc, updateDoc, deleteDoc, query, limit } from "firebase/firestore";
+import LearningFields from './LearningFields.jsx';
+import { enrichWord, normalizePrefixes, prepareWordForSave } from '../utils/vocabulary.js';
 import { initialFormData } from '../config.js'; 
 
 // --- ICONOS ---
@@ -50,10 +52,10 @@ function VocabularyManager({ user }) {
             setIsLoading(true);
             try {
                 const [wordsSnapshot, categoriesSnapshot] = await Promise.all([
-                    getDocs(query(collection(db, `users/${user.uid}/words`), limit(300))),
+                    getDocs(collection(db, `users/${user.uid}/words`)),
                     getDocs(query(collection(db, "categories"), limit(100)))
                 ]);
-                const wordsList = wordsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                const wordsList = wordsSnapshot.docs.map(doc => enrichWord({ id: doc.id, ...doc.data() }));
                 // Ordenar alfabéticamente por defecto
                 wordsList.sort((a, b) => a.german.localeCompare(b.german));
                 
@@ -94,7 +96,7 @@ function VocabularyManager({ user }) {
             ...initialFormData,
             ...word,
             category: wordCategory ? wordCategory.name : '',
-            attributes: { ...initialFormData.attributes, ...word.attributes, separablePrefixes: word.attributes?.separablePrefixes || [{ prefix: '', meaning: '' }] }
+            attributes: { ...initialFormData.attributes, ...word.attributes, separablePrefixes: word.attributes?.separablePrefixes?.map(prefix => ({ ...prefix })) || [{ prefix: '', meaning: '' }] }
         });
         setFeedback({ type: '', message: '' });
         setSelectedWord(word); // Esto dispara el cambio de vista en móvil
@@ -112,7 +114,7 @@ function VocabularyManager({ user }) {
 
         if (field === 'separablePrefixes') {
             const newPrefixes = [...formData.attributes.separablePrefixes];
-            newPrefixes[index][subfield] = value;
+            newPrefixes[index] = { ...newPrefixes[index], [subfield]: value };
             setFormData(p => ({ ...p, attributes: { ...p.attributes, separablePrefixes: newPrefixes } }));
         } else if (Object.keys(initialFormData.attributes).includes(name)) {
             setFormData(p => ({ ...p, attributes: { ...p.attributes, [name]: type === 'checkbox' ? checked : value } }));
@@ -137,30 +139,39 @@ function VocabularyManager({ user }) {
                 categoryId = newCatRef.id;
             }
 
-            const updatedWord = {
+            let updatedWord = {
                 german: formData.german.trim(),
                 spanish: formData.spanish.trim(),
                 type: formData.type,
                 difficulty: parseInt(formData.difficulty),
                 ...(categoryId && { categoryId }),
-                attributes: {}
+                attributes: { ...selectedWord.attributes }
             };
             
             if (formData.type === 'noun') updatedWord.attributes.gender = formData.attributes.gender;
             if (formData.type === 'preposition') updatedWord.attributes.case = formData.attributes.case;
             if (formData.type === 'verb') {
                 updatedWord.attributes.isRegular = formData.attributes.isRegular;
+                if (formData.attributes.isRegular) {
+                    delete updatedWord.attributes.pastTense;
+                    delete updatedWord.attributes.participle;
+                }
                 if (!formData.attributes.isRegular) {
                     updatedWord.attributes.pastTense = formData.attributes.pastTense;
                     updatedWord.attributes.participle = formData.attributes.participle;
                 }
                 const prefixes = formData.attributes.separablePrefixes.filter(p => p.prefix.trim() && p.meaning.trim());
-                if (prefixes.length > 0) updatedWord.attributes.separablePrefixes = prefixes;
+                updatedWord.attributes.separablePrefixes = normalizePrefixes(prefixes);
+                updatedWord.attributes.prefixCatalogVersion = 1;
             }
             
+            if (formData.learning) updatedWord.learning = formData.learning;
+            updatedWord = prepareWordForSave(updatedWord);
             await updateDoc(doc(db, `users/${user.uid}/words`, selectedWord.id), updatedWord);
-            setAllWords(prev => prev.map(w => w.id === selectedWord.id ? { id: selectedWord.id, ...updatedWord } : w));
+            setAllWords(prev => prev.map(w => w.id === selectedWord.id ? { ...w, ...updatedWord } : w));
             
+            setSelectedWord(prev => ({ ...prev, ...updatedWord }));
+            setFormData(prev => ({ ...prev, ...updatedWord }));
             setFeedback({ type: 'success', message: '¡Guardado con éxito!' });
             setTimeout(() => {
                 setFeedback({ type: '', message: '' });
@@ -392,6 +403,8 @@ function VocabularyManager({ user }) {
                                     
                                     {(formData.type === 'adjective' || formData.type === 'other') && <p className="text-sm text-gray-500 italic text-center">No hay atributos especiales para este tipo.</p>}
                                 </div>
+
+                                <LearningFields word={formData} onChange={learning => setFormData(prev => ({ ...prev, learning }))} />
 
                                 {/* Botón Guardar Flotante o Fijo */}
                                 <div className="pt-4 pb-2">

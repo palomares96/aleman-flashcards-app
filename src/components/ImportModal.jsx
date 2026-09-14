@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { prepareWordForSave } from '../utils/vocabulary.js';
 import { db } from '../firebase.js';
 import { collection, query, getDocs, writeBatch, doc, serverTimestamp, limit, orderBy, startAfter, where } from 'firebase/firestore';
 
@@ -164,7 +165,7 @@ function ImportModal({ user, friend, onClose }) {
                 uid: friend.id,
                 displayName: friend.displayName
             };
-            batch.set(newWordRef, dataToSave);
+            batch.set(newWordRef, prepareWordForSave(dataToSave));
         });
 
         try {

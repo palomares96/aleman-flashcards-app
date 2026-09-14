@@ -1,3 +1,5 @@
+import WordLearningPanel from './WordLearningPanel.jsx';
+import { expandVocabulary, normalizeGerman } from '../utils/vocabulary.js';
 import { MASTERY_CRITERIA } from '../config.js';
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase.js';
@@ -14,9 +16,9 @@ const RotateIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 
 // =================================================================================
 // COMPONENTE VISUAL: CARA DE LA TARJETA
 // =================================================================================
-const CardFace = ({ palabra, isFront, direction, baseGradientClasses }) => {
+const CardFace = ({ palabra, isFront, direction, baseGradientClasses, isVisible }) => {
     const isGermanSide = (isFront && direction === 'de-es') || (!isFront && direction === 'es-de');
-    const mainText = isGermanSide ? palabra.german : palabra.spanish;
+    const mainText = isGermanSide ? normalizeGerman(palabra.german, palabra.type) : palabra.spanish;
     const langLabel = isGermanSide ? 'ALEMÁN' : 'ESPAÑOL';
 
     // Diccionarios para visualización
@@ -31,7 +33,7 @@ const CardFace = ({ palabra, isFront, direction, baseGradientClasses }) => {
             displayMain = `${articles[palabra.attributes.gender]} ${mainText.charAt(0).toUpperCase() + mainText.slice(1)}`;
             typeInfo = `Sustantivo • ${genderLabels[palabra.attributes.gender] || ''}`;
         } else {
-            typeInfo = palabra.type.charAt(0).toUpperCase() + palabra.type.slice(1);
+            typeInfo = ({ verb: 'Verbo', adjective: 'Adjetivo', preposition: 'Preposición', other: 'Palabra' })[palabra.type] || 'Palabra';
         }
     } else {
         typeInfo = "Traducción";
@@ -47,6 +49,7 @@ const CardFace = ({ palabra, isFront, direction, baseGradientClasses }) => {
 
     return (
         <div
+            aria-hidden={!isVisible}
             className={`
             absolute w-full h-full rounded-[2rem] 
             ${faceGradient} 
@@ -72,6 +75,7 @@ const CardFace = ({ palabra, isFront, direction, baseGradientClasses }) => {
                 <h2 className="text-4xl sm:text-5xl font-bold text-white mb-3 tracking-tight leading-tight drop-shadow-md break-words">
                     {displayMain}
                 </h2>
+                {!isGermanSide && palabra.learning?.hintEs && <p className="text-sm text-white/80 mb-3">{palabra.learning.hintEs}</p>}
                 <p className="text-lg text-white/80 font-medium tracking-wide">{typeInfo}</p>
 
                 {/* Info extra para verbos (solo cara alemana) */}
@@ -138,11 +142,13 @@ const ActiveCard = ({ palabra, flipped, direction, onClick, isSwipingOut }) => {
             {/* Carta Principal */}
             <div
                 onClick={onClick}
+                role="button" tabIndex={0} aria-label="Girar tarjeta" aria-pressed={flipped}
+                onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClick(); } }}
                 className="relative w-full h-full cursor-pointer transition-transform duration-300 transform-style-3d shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)]"
                 style={{ transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)" }}
             >
-                <CardFace palabra={palabra} isFront={true} direction={direction} baseGradientClasses={baseGradient} />
-                <CardFace palabra={palabra} isFront={false} direction={direction} baseGradientClasses={baseGradient} />
+                <CardFace palabra={palabra} isFront={true} isVisible={!flipped} direction={direction} baseGradientClasses={baseGradient} />
+                <CardFace palabra={palabra} isFront={false} isVisible={flipped} direction={direction} baseGradientClasses={baseGradient} />
             </div>
         </div>
     );
@@ -218,21 +224,7 @@ function Game({ user, onTrophyUnlock }) {
                     return { id: doc.id, ...wordData, progress: { ...progress, totalPlays, errorRate, isMastered } };
                 });
 
-                const playableWords = [];
-                baseWords.forEach(word => {
-                    playableWords.push(word);
-                    if (word.type === 'verb' && word.attributes?.separablePrefixes) {
-                        word.attributes.separablePrefixes.forEach(p => {
-                            playableWords.push({
-                                ...word,
-                                id: `${word.id}_${p.prefix}`,
-                                german: p.prefix.toLowerCase() + word.german,
-                                spanish: p.meaning,
-                                isDerived: true
-                            });
-                        });
-                    }
-                });
+                const playableWords = expandVocabulary(baseWords);
 
                 setAllWords(playableWords);
                 setMyOriginalWords(playableWords);
@@ -262,16 +254,7 @@ function Game({ user, onTrophyUnlock }) {
                     progress: { correct: 0, incorrect: 0, correctStreak: 0, totalPlays: 0, errorRate: 0, isMastered: false }
                 }));
 
-                const friendPlayableWords = [];
-                sourceWords.forEach(word => {
-                    friendPlayableWords.push(word);
-                    if (word.type === 'verb' && word.attributes?.separablePrefixes) {
-                        word.attributes.separablePrefixes.forEach(p => {
-                            friendPlayableWords.push({ ...word, id: `${word.id}_${p.prefix}`, german: p.prefix + word.german, spanish: p.meaning, isDerived: true });
-                        });
-                    }
-                });
-                sourceWords = friendPlayableWords;
+                sourceWords = expandVocabulary(sourceWords);
             } else if (allWords !== myOriginalWords) {
                 sourceWords = myOriginalWords;
             }
@@ -366,7 +349,7 @@ function Game({ user, onTrophyUnlock }) {
 
         // 2. Guardado en Firebase (sucede en paralelo a la animación)
         if (!filters.friendPlay) {
-            const baseWordId = palabraActual.id.split('_')[0];
+            const baseWordId = palabraActual.baseWordId || palabraActual.id;
             const progressRef = doc(db, `users/${user.uid}/progress`, baseWordId);
             const dataToUpdate = { lastReviewed: serverTimestamp() };
 
@@ -455,7 +438,7 @@ function Game({ user, onTrophyUnlock }) {
     if (error) return <div className="h-full flex items-center justify-center text-red-400">{error}</div>;
 
     return (
-        <div className="h-full flex flex-col relative">
+        <div className="min-h-full flex flex-col relative">
             {/* HEADER */}
             <div className="flex justify-between items-center mb-6 pt-2">
                 <h1 className="text-4xl font-extrabold text-white tracking-tight drop-shadow-lg">Jugar</h1>
@@ -517,7 +500,8 @@ function Game({ user, onTrophyUnlock }) {
                     ) : !palabraActual ? (
                         <div className="text-center text-white/50">Cargando palabra...</div>
                     ) : (
-                        <div className="relative w-full h-80 sm:h-96">
+                        <div className="relative w-full">
+                            <div className="relative h-80 sm:h-96">
                             <DeckBackground count={gameMode === 'review' ? reviewDeck.length : filteredWords.length} />
                             <ActiveCard
                                 key={palabraActual.id}
@@ -527,6 +511,8 @@ function Game({ user, onTrophyUnlock }) {
                                 onClick={handleFlip}
                                 isSwipingOut={isSwipingOut}
                             />
+                            </div>
+                            {flipped && !isSwipingOut && <WordLearningPanel word={palabraActual} />}
                         </div>
                     )
                 ) : (
