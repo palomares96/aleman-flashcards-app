@@ -8,6 +8,8 @@ The repository contains three workflows in `codemagic.yaml`:
 
 All use Node 22 and Java 21 on a Mac mini M2. Do not run concurrent publishing builds: both could read the same latest Play version code. Retry the losing build if Google rejects a duplicate version. The visible version name is maintained in `android/app/build.gradle`.
 
+Android compiles and targets API 36 (Android 16), as required for Google Play updates from 31 August 2026. The build uses Capacitor 8's documented AGP 8.13.0 / Gradle 8.14.3 toolchain and AndroidX versions. See [Google Play target API requirements](https://support.google.com/googleplay/android-developer/answer/11926878) and the [Capacitor 8 migration guide](https://capacitorjs.com/docs/updating/8-0).
+
 ## One-time setup
 
 1. Add `palomares96/aleman-flashcards-app` to the existing Codemagic GitHub installation and add it as an Android application in Codemagic.
