@@ -50,7 +50,7 @@ workflows:
     name: Android - signed Google Play Alpha release
     instance_type: mac_mini_m2
     max_build_duration: 45
-    environment:
+    environment: &release_environment
       node: 22
       java: 21
       android_signing:
@@ -68,7 +68,7 @@ workflows:
         - pattern: android-v*
           include: true
       cancel_previous_builds: false
-    scripts:
+    scripts: &release_scripts
       - name: Verify upload key and Google Play access
         script: |
           set -euo pipefail
@@ -79,7 +79,7 @@ workflows:
           : "${GOOGLE_PLAY_SERVICE_ACCOUNT_CREDENTIALS:?Missing Google Play credentials}"
           keytool -J-Duser.language=en -list -v \
             -keystore "$CM_KEYSTORE_PATH" -storepass:env CM_KEYSTORE_PASSWORD \
-            -alias "$CM_KEY_ALIAS" | grep -Fq 'CB:10:AA:7E:BD:2D:AF:C1:09:62:84:D1:03:04:4F:F0:0E:E5:C3:29:82:8B:28:BF:9E:0F:19:8C:4F:39:F6:EC'
+            -alias "$CM_KEY_ALIAS" | grep -Fq 'A3:82:9F:74:6E:D4:54:5F:86:86:57:DE:7F:16:80:97:7A:D8:6E:09:BF:0E:DF:EC:63:60:22:33:1E:19:2A:B5'
           LATEST=$(google-play get-latest-build-number --package-name "$PACKAGE_NAME")
           [[ "$LATEST" =~ ^[0-9]+$ ]] || { echo 'Could not read the latest Google Play version code'; exit 1; }
           echo "RELEASE_VERSION_CODE=$((LATEST + 1))" >> "$CM_ENV"
@@ -93,10 +93,21 @@ workflows:
           bash gradlew --no-daemon bundleRelease -PreleaseVersionCode="$RELEASE_VERSION_CODE"
           AAB=app/build/outputs/bundle/release/app-release.aab
           jarsigner -verify "$AAB"
-          keytool -J-Duser.language=en -printcert -jarfile "$AAB" | grep -Fq 'CB:10:AA:7E:BD:2D:AF:C1:09:62:84:D1:03:04:4F:F0:0E:E5:C3:29:82:8B:28:BF:9E:0F:19:8C:4F:39:F6:EC'
+          keytool -J-Duser.language=en -printcert -jarfile "$AAB" | grep -Fq 'A3:82:9F:74:6E:D4:54:5F:86:86:57:DE:7F:16:80:97:7A:D8:6E:09:BF:0E:DF:EC:63:60:22:33:1E:19:2A:B5'
     artifacts:
       - android/app/build/outputs/bundle/release/app-release.aab
     publishing:
       google_play:
         credentials: $GOOGLE_PLAY_SERVICE_ACCOUNT_CREDENTIALS
         track: alpha
+
+  # Verify signing and Play access while Google processes an upload-key reset.
+  # This workflow has no publishing step and never uploads the bundle to Play.
+  android-signed-check:
+    name: Android - verify signed bundle without publishing
+    instance_type: mac_mini_m2
+    max_build_duration: 45
+    environment: *release_environment
+    scripts: *release_scripts
+    artifacts:
+      - android/app/build/outputs/bundle/release/app-release.aab
