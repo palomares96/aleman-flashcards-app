@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-export default function AudioButton({ text }) {
+export default function AudioButton({ text, compact = false }) {
   const [status, setStatus] = useState("");
   useEffect(
     () => () => {
@@ -35,16 +35,29 @@ export default function AudioButton({ text }) {
     speechSynthesis.speak(utterance);
   };
   return (
-    <div>
+    <div className={compact ? "relative" : ""}>
       <button
         type="button"
         onClick={speak}
-        className="px-4 py-3 rounded-xl bg-blue-900/60"
+        aria-label="Escuchar alemán"
+        title="Escuchar alemán"
+        className={
+          compact
+            ? "w-11 h-11 flex items-center justify-center rounded-full bg-black/25 text-white"
+            : "px-4 py-3 rounded-xl bg-blue-900/60"
+        }
       >
-        🔊 Escuchar alemán
+        {compact ? <span aria-hidden="true">🔊</span> : "🔊 Escuchar alemán"}
       </button>
       {status && (
-        <p role="status" className="text-xs text-gray-400 mt-2">
+        <p
+          role="status"
+          className={
+            compact
+              ? "absolute right-0 top-full mt-2 w-56 p-3 rounded-xl bg-slate-900 shadow-xl text-xs text-gray-200 z-20"
+              : "text-xs text-gray-400 mt-2"
+          }
+        >
           {status}
         </p>
       )}

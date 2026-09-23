@@ -87,29 +87,34 @@ export default function ContrastPractice({ user }) {
   if (historyLoading || vocabularyLoading)
     return <p role="status">Preparando contrastes…</p>;
   return (
-    <section className="space-y-5">
-      <h1 className="text-2xl font-bold">¿Cuál encaja aquí?</h1>
-      <p className="text-gray-400">
-        Practica el matiz que cambia la elección de una palabra.
-      </p>
-      <label className="flex gap-2">
-        <input
-          type="checkbox"
-          checked={all}
-          disabled={saving}
-          onChange={(e) => {
-            setAll(e.target.checked);
-            setRepeat([]);
-            setIndex(0);
-            setAnswer("");
-            setError("");
-            setAttemptId(crypto.randomUUID());
-          }}
-        />{" "}
-        Incluir todos los contrastes, aunque no estén en mi mazo
-      </label>
+    <section className="space-y-3">
+      <details className="text-sm text-gray-400">
+        <summary className="cursor-pointer py-2">
+          Opciones de contrastes
+        </summary>
+        <p className="my-2">
+          Practica el matiz que cambia la elección de una palabra.
+        </p>
+        <label className="flex gap-2 py-2">
+          <input
+            type="checkbox"
+            checked={all}
+            disabled={saving}
+            onChange={(e) => {
+              setAll(e.target.checked);
+              setRepeat([]);
+              setIndex(0);
+              setAnswer("");
+              setError("");
+              setAttemptId(crypto.randomUUID());
+            }}
+          />{" "}
+          Incluir todos los contrastes, aunque no estén en mi mazo
+        </label>
+      </details>
       {exercise ? (
-        <div className="p-6 rounded-3xl bg-gray-800 space-y-5">
+        <div className="p-5 rounded-3xl bg-gray-800 space-y-4">
+          <h1 className="text-lg font-bold">¿Cuál encaja aquí?</h1>
           <p className="text-sm text-gray-400">
             {index + 1} / {exercises.length + repeat.length}
           </p>
@@ -142,7 +147,12 @@ export default function ContrastPractice({ user }) {
                   ? "Correcto"
                   : `Respuesta: ${exercise.answer}`}
               </p>
-              <p>{exercise.explanation}</p>
+              <details className="text-sm text-gray-300">
+                <summary className="cursor-pointer py-2">
+                  Ver explicación
+                </summary>
+                <p className="mt-2">{exercise.explanation}</p>
+              </details>
               {error ? (
                 <button onClick={() => save(answer)} disabled={saving}>
                   Reintentar guardado

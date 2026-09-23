@@ -16,3 +16,164 @@
 .rotate-y-180 {
   transform: rotateY(180deg);
 }
+
+/* The navigation participates in layout: it can never cover an answer. */
+.app-shell {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  padding-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  padding-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+  padding-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+}
+.mobile-nav {
+  padding-bottom: max(
+    4px,
+    var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))
+  );
+}
+.app-main-game {
+  padding: 12px 18px 16px;
+}
+.game-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  height: 100%;
+}
+.game-content > [role="status"] {
+  flex-shrink: 0;
+}
+.game-view-cards,
+.study-session {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.study-session {
+  gap: 10px;
+  min-height: 380px;
+}
+.study-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.study-play {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+.study-card-slot {
+  flex: 1;
+  min-height: 190px;
+  position: relative;
+}
+.study-card {
+  height: 100%;
+}
+.study-card-face {
+  padding: 24px;
+}
+.study-card-word {
+  font-size: clamp(1.75rem, 7vw, 3rem);
+  overflow-wrap: anywhere;
+}
+.study-card-audio {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+}
+.study-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.study-sheet {
+  color: #fff;
+  background: #0f172a;
+  border: 1px solid #ffffff20;
+  border-radius: 24px 24px 0 0;
+  padding: 0;
+  width: 100%;
+  max-width: 520px;
+  max-height: 88dvh;
+  margin: auto auto 0;
+  overscroll-behavior: contain;
+}
+.study-sheet::backdrop {
+  background: #020617b8;
+  backdrop-filter: blur(4px);
+}
+.study-sheet-content {
+  padding: 22px 20px
+    max(24px, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+}
+.study-sheet-content > header {
+  position: sticky;
+  top: 0;
+  background: #0f172a;
+  z-index: 1;
+  padding-bottom: 8px;
+}
+button,
+input,
+select,
+summary {
+  touch-action: manipulation;
+}
+button:focus-visible,
+[role="button"]:focus-visible,
+summary:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 3px;
+}
+@media (min-width: 640px) {
+  .study-sheet {
+    margin: auto;
+    border-radius: 24px;
+  }
+  .study-card-face {
+    padding: 30px;
+  }
+}
+@media (min-width: 1024px) {
+  .app-shell {
+    padding-bottom: var(
+      --safe-area-inset-bottom,
+      env(safe-area-inset-bottom, 0px)
+    );
+  }
+  .app-main-game {
+    padding: 24px;
+  }
+}
+@media (max-height: 650px) {
+  .app-main-game {
+    padding-top: 6px;
+    padding-bottom: 10px;
+  }
+  .study-session,
+  .study-play {
+    gap: 8px;
+  }
+  .study-card-face {
+    padding: 18px;
+  }
+  .study-card-word {
+    font-size: clamp(1.5rem, 6vw, 2.25rem);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .study-card,
+  .study-card > div {
+    transition: none;
+  }
+}

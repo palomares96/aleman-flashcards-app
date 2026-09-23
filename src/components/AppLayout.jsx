@@ -78,7 +78,7 @@ function AppLayout({ user, userProfile, onShowPrivacy }) {
     };
 
     return (
-        <div className="flex h-screen font-sans text-white bg-slate-950">
+        <div className="app-shell flex font-sans text-white bg-slate-950">
             {/* Desktop Sidebar Navigation - hidden on mobile, visible on lg+ */}
             <aside className="hidden lg:flex flex-col w-64 shrink-0 bg-slate-900/80 border-r border-white/10 pt-8 pb-6 px-4">
                 <div className="mb-10 px-3">
@@ -118,14 +118,14 @@ function AppLayout({ user, userProfile, onShowPrivacy }) {
             </aside>
 
             {/* Main content wrapper */}
-            <div className="flex flex-col flex-1 min-w-0">
+            <div className="flex flex-col flex-1 min-w-0 min-h-0">
                 {/* Main Content Area */}
-                <main className="flex-1 overflow-y-auto w-full max-w-md lg:max-w-2xl mx-auto pt-10 pb-24 lg:pb-10 px-6 relative z-0">
+                <main className={`app-main flex-1 min-h-0 overflow-y-auto w-full max-w-md lg:max-w-2xl mx-auto relative z-0 ${view === "game" ? "app-main-game" : "px-5 py-6"}`}>
                     {/* Background decorative blobs */}
                     <div className="fixed top-0 left-0 w-64 h-64 bg-blue-600/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
                     <div className="fixed bottom-0 right-0 w-80 h-80 bg-purple-600/10 rounded-full blur-3xl translate-x-1/3 translate-y-1/3 pointer-events-none"></div>
 
-                    <div className="relative z-10 h-full">
+                    <div className={`relative z-10 ${view === "game" ? "game-content" : ""}`}>
                         {!Capacitor.isNativePlatform() && <OfflineAppStatus />}
                         <VocabularyEnrichmentStatus user={user} />
                         {banner && <TrophyBanner trophy={banner} onClose={() => setBanner(null)} />}
@@ -140,7 +140,7 @@ function AppLayout({ user, userProfile, onShowPrivacy }) {
                 </main>
 
                 {/* Mobile Bottom Navigation (Glassmorphism) - hidden on desktop */}
-                <nav className="fixed bottom-0 w-full z-50 bg-slate-950/80 backdrop-blur-xl border-t border-white/10 pb-safe pt-2 lg:hidden">
+                <nav aria-label="Navegación principal" className="mobile-nav shrink-0 w-full z-20 bg-slate-950/80 backdrop-blur-xl border-t border-white/10 pt-2 lg:hidden">
                     <div className="flex justify-around items-end max-w-md mx-auto px-2">
                         <NavItem viewName="game" label="Jugar" Icon={GameIcon} />
                         <NavItem viewName="sentenceMode" label="Frases" Icon={SentenceIcon} />

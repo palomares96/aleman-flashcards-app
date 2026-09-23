@@ -1,3 +1,4 @@
+import StudySheet from "./StudySheet.jsx";
 import WordLearningPanel from "./WordLearningPanel.jsx";
 import { expandVocabulary, normalizeGerman } from "../utils/vocabulary.js";
 import React, { useState, useEffect, useRef } from "react";
@@ -158,7 +159,7 @@ const CardFace = ({
             absolute w-full h-full rounded-[2rem] 
             ${faceGradient} 
             backdrop-blur-xl border border-white/20 shadow-2xl 
-            flex flex-col p-8 overflow-hidden backface-hidden
+            study-card-face flex flex-col overflow-y-auto backface-hidden
         `}
       style={{
         backfaceVisibility: "hidden",
@@ -184,8 +185,8 @@ const CardFace = ({
       </div>
 
       {/* Contenido */}
-      <div className="flex-1 flex flex-col justify-center z-10 my-4">
-        <h2 className="text-4xl sm:text-5xl font-bold text-white mb-3 tracking-tight leading-tight drop-shadow-md break-words">
+      <div className="flex-1 flex flex-col justify-center z-10 my-3">
+        <h2 className="study-card-word font-bold text-white mb-2 tracking-tight leading-tight drop-shadow-md break-words">
           {displayMain}
         </h2>
         {!isGermanSide && palabra.learning?.hintEs && (
@@ -193,7 +194,7 @@ const CardFace = ({
             {palabra.learning.hintEs}
           </p>
         )}
-        <p className="text-lg text-white/80 font-medium tracking-wide">
+        <p className="text-sm text-white/80 font-medium tracking-wide">
           {typeInfo}
         </p>
 
@@ -202,7 +203,7 @@ const CardFace = ({
           palabra.type === "verb" &&
           !palabra.isDerived &&
           palabra.attributes?.pastTense && (
-            <div className="mt-4 pt-4 border-t border-white/20 w-full">
+            <div className="mt-2 pt-2 border-t border-white/20 w-full">
               <p className="text-sm text-white/90 opacity-90 font-mono">
                 {palabra.attributes.pastTense}, {palabra.attributes.participle}
               </p>
@@ -273,7 +274,7 @@ const ActiveCard = ({ palabra, flipped, direction, onClick, isSwipingOut }) => {
 
   return (
     <div
-      className={`relative w-full h-80 sm:h-96 transition-all ${swipeAnimationClasses}`}
+      className={`study-card relative w-full transition-all ${swipeAnimationClasses}`}
       style={{ perspective: "1200px" }}
     >
       {/* Carta Principal */}
@@ -314,24 +315,68 @@ const ActiveCard = ({ palabra, flipped, direction, onClick, isSwipingOut }) => {
 // =================================================================================
 // LÓGICA DEL JUEGO (GAME)
 // =================================================================================
-function StudyCards({ user, mistakeIds = null }) {
+function StudyCards({ user, mistakeIds = null, modePicker }) {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [saved] = useState(() => {
+    try {
+      return (
+        JSON.parse(localStorage.getItem(`study-options:${user.uid}`)) || {}
+      );
+    } catch {
+      return {};
+    }
+  });
   const study = useStudyData(user.uid);
   const sessionId = useRef(crypto.randomUUID());
   const [direction, setDirection] = useState(
-    mistakeIds?.direction === "es-de" ? "es-de" : "de-es",
+    mistakeIds
+      ? mistakeIds.direction === "es-de"
+        ? "es-de"
+        : "de-es"
+      : saved.direction === "es-de"
+        ? "es-de"
+        : "de-es",
   );
   const [practice, setPractice] = useState(
-    mistakeIds?.direction === "listen" ? "listen" : "cards",
+    mistakeIds
+      ? mistakeIds.direction === "listen"
+        ? "listen"
+        : "cards"
+      : ["cards", "type", "listen"].includes(saved.practice)
+        ? saved.practice
+        : "cards",
   );
-  const [mode, setMode] = useState(mistakeIds ? "mistakes" : "due");
-  const [filters, setFilters] = useState({
-    type: "",
-    categoryId: "",
-    difficulty: "",
-    gender: "",
-    case: "",
-    performance: "",
-  });
+  const [mode, setMode] = useState(
+    mistakeIds
+      ? "mistakes"
+      : ["due", "review", "random"].includes(saved.mode)
+        ? saved.mode
+        : "due",
+  );
+  const [filters, setFilters] = useState(() =>
+    Object.fromEntries(
+      ["type", "categoryId", "difficulty", "gender", "case", "performance"].map(
+        (key) => [
+          key,
+          !mistakeIds && typeof saved.filters?.[key] === "string"
+            ? saved.filters[key]
+            : "",
+        ],
+      ),
+    ),
+  );
+  useEffect(() => {
+    if (mistakeIds) return;
+    try {
+      localStorage.setItem(
+        `study-options:${user.uid}`,
+        JSON.stringify({ direction, practice, mode, filters }),
+      );
+    } catch {
+      /* Practice remains usable when browser storage is unavailable. */
+    }
+  }, [user.uid, direction, practice, mode, filters, mistakeIds]);
   const [friend, setFriend] = useState(
     mistakeIds?.sourceUid !== user.uid ? mistakeIds?.sourceUid || "" : "",
   );
@@ -395,6 +440,7 @@ function StudyCards({ user, mistakeIds = null }) {
     setFlipped(false);
     setAnswer("");
     setFeedback(null);
+    setDetailsOpen(false);
     setClock(Date.now());
   }, [direction, practice, mode, filters, friend, mistakeIds]);
   const source = friend ? sharedWords : study.items;
@@ -518,6 +564,7 @@ function StudyCards({ user, mistakeIds = null }) {
       setFlipped(false);
       setAnswer("");
       setFeedback(null);
+      setDetailsOpen(false);
       setErrorType("meaning");
     } catch (failure) {
       setError(`No se guardó el repaso. ${failure.message}`);
@@ -551,130 +598,179 @@ function StudyCards({ user, mistakeIds = null }) {
       </div>
     );
   return (
-    <div className="space-y-5 pb-8">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Tu repaso</h1>
-          <p className="text-sm text-gray-400">
-            {session.total} respuestas · {session.correct} recordadas ·{" "}
-            {queue.length} pendientes
+    <div className="study-session">
+      <header className="study-toolbar">
+        <div className="min-w-0">
+          <h1 className="text-sm font-semibold text-gray-200">
+            {practice === "listen"
+              ? "Dictado"
+              : practice === "type"
+                ? "Escribir"
+                : "Tarjetas"}{" "}
+            <span className="font-normal text-gray-400">
+              ·{" "}
+              {practice === "listen"
+                ? "DE"
+                : direction === "de-es"
+                  ? "DE → ES"
+                  : "ES → DE"}
+            </span>
+          </h1>
+          <p className="text-xs text-gray-400">
+            {session.total} hechas · {queue.length} pendientes
+            {Object.values(filters).some(Boolean) || friend
+              ? " · Filtrado"
+              : ""}
           </p>
         </div>
         <button
-          title={
-            direction === "de-es" ? "Alemán -> Español" : "Español -> Alemán"
-          }
-          onClick={() =>
-            setDirection(direction === "de-es" ? "es-de" : "de-es")
-          }
-          disabled={practice === "listen"}
-          className="rounded-xl p-3 bg-gray-800 text-sm disabled:opacity-40"
+          type="button"
+          onClick={() => setSettingsOpen(true)}
+          className="flex items-center gap-2 rounded-xl bg-white/5 px-3 py-3 text-sm"
+          aria-label="Ajustes de práctica"
         >
-          {direction === "de-es" ? "DE → ES" : "ES → DE"} ⇄
+          <FilterIcon />
+          <span>Ajustes</span>
         </button>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        {select("Sesión", mode, setMode, [
-          ["due", "Repasos pendientes"],
-          ["review", "Todo el mazo"],
-          ["random", "Al azar"],
-          ["mistakes", "Últimos fallos"],
-        ])}
-        {select("Ejercicio", practice, setPractice, [
-          ["cards", "Tarjetas"],
-          ["type", "Escribir respuesta"],
-          ["listen", "Escuchar y escribir"],
-        ])}
-      </div>
-      <details className="rounded-xl border border-white/10 p-3">
-        <summary className="cursor-pointer text-gray-300">
-          Filtros y mazos
-        </summary>
-        <div className="grid grid-cols-2 gap-3 mt-3">
-          {select(
-            "Tipo",
-            filters.type,
-            (value) => setFilters({ ...filters, type: value }),
-            [
-              ["", "Todos"],
-              ["noun", "Sustantivos"],
-              ["verb", "Verbos"],
-              ["adjective", "Adjetivos"],
-              ["preposition", "Preposiciones"],
-              ["other", "Otros"],
-            ],
+      </header>
+      <StudySheet
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        title="Tu práctica"
+      >
+        {modePicker}
+        <div className="my-5">
+          {select("Dirección", direction, setDirection, [
+            ["de-es", "Alemán → Español"],
+            ["es-de", "Español → Alemán"],
+          ])}
+          {practice === "listen" && (
+            <p className="text-xs text-gray-400 mt-2">
+              En dictado siempre escuchas y escribes en alemán.
+            </p>
           )}
-          {select(
-            "Categoría",
-            filters.categoryId,
-            (value) => setFilters({ ...filters, categoryId: value }),
-            [["", "Todas"], ...categories],
-          )}
-          {select(
-            "Dificultad",
-            filters.difficulty,
-            (value) => setFilters({ ...filters, difficulty: value }),
-            [
-              ["", "Todas"],
-              ["1", "1"],
-              ["2", "2"],
-              ["3", "3"],
-            ],
-          )}
-          {select(
-            "Progreso",
-            filters.performance,
-            (value) => setFilters({ ...filters, performance: value }),
-            [
-              ["", "Todos"],
-              ["new", "Sin practicar"],
-              ["struggling", "Me cuestan"],
-            ],
-          )}
-          {select(
-            "Artículo",
-            filters.gender,
-            (value) => setFilters({ ...filters, gender: value }),
-            [
-              ["", "Todos"],
-              ["m", "der"],
-              ["f", "die"],
-              ["n", "das"],
-            ],
-          )}
-          {select(
-            "Caso",
-            filters.case,
-            (value) => setFilters({ ...filters, case: value }),
-            [
-              ["", "Todos"],
-              ["Akkusativ", "Acusativo"],
-              ["Dativ", "Dativo"],
-              ["Genitiv", "Genitivo"],
-              ["Wechselpräposition", "Variable"],
-            ],
-          )}
-          {select("Mazo", friend, setFriend, [
-            ["", "Mi vocabulario"],
-            ...friends.map((f) => [f.id, f.displayName]),
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {select("Sesión", mode, setMode, [
+            ["due", "Repasos pendientes"],
+            ["review", "Todo el mazo"],
+            ["random", "Al azar"],
+            ["mistakes", "Últimos fallos"],
+          ])}
+          {select("Ejercicio", practice, setPractice, [
+            ["cards", "Tarjetas"],
+            ["type", "Escribir respuesta"],
+            ["listen", "Escuchar y escribir"],
           ])}
         </div>
-      </details>
-      <div role="status" className="text-xs text-gray-400">
-        {study.pending
-          ? `${study.pending} repasos guardados en este dispositivo, pendientes de sincronizar.`
-          : study.offline
-            ? "Biblioteca sin conexión."
-            : "Repasos sincronizados."}
-        {study.syncError && (
-          <span className="block text-amber-300">
-            {study.syncError}{" "}
-            <button onClick={study.retrySync} className="underline">
-              Reintentar sincronización
-            </button>
-          </span>
-        )}
-      </div>
+        <section className="mt-5 border-t border-white/10 pt-4">
+          <h3 className="text-sm font-semibold">Mazo y filtros</h3>
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            {select(
+              "Tipo",
+              filters.type,
+              (value) => setFilters({ ...filters, type: value }),
+              [
+                ["", "Todos"],
+                ["noun", "Sustantivos"],
+                ["verb", "Verbos"],
+                ["adjective", "Adjetivos"],
+                ["preposition", "Preposiciones"],
+                ["other", "Otros"],
+              ],
+            )}
+            {select(
+              "Categoría",
+              filters.categoryId,
+              (value) => setFilters({ ...filters, categoryId: value }),
+              [["", "Todas"], ...categories],
+            )}
+            {select(
+              "Dificultad",
+              filters.difficulty,
+              (value) => setFilters({ ...filters, difficulty: value }),
+              [
+                ["", "Todas"],
+                ["1", "1"],
+                ["2", "2"],
+                ["3", "3"],
+              ],
+            )}
+            {select(
+              "Progreso",
+              filters.performance,
+              (value) => setFilters({ ...filters, performance: value }),
+              [
+                ["", "Todos"],
+                ["new", "Sin practicar"],
+                ["struggling", "Me cuestan"],
+              ],
+            )}
+            {select(
+              "Artículo",
+              filters.gender,
+              (value) => setFilters({ ...filters, gender: value }),
+              [
+                ["", "Todos"],
+                ["m", "der"],
+                ["f", "die"],
+                ["n", "das"],
+              ],
+            )}
+            {select(
+              "Caso",
+              filters.case,
+              (value) => setFilters({ ...filters, case: value }),
+              [
+                ["", "Todos"],
+                ["Akkusativ", "Acusativo"],
+                ["Dativ", "Dativo"],
+                ["Genitiv", "Genitivo"],
+                ["Wechselpräposition", "Variable"],
+              ],
+            )}
+            {select("Mazo", friend, setFriend, [
+              ["", "Mi vocabulario"],
+              ...friends.map((f) => [f.id, f.displayName]),
+            ])}
+          </div>
+          <button
+            type="button"
+            className="mt-3 py-3 text-sm text-blue-300"
+            onClick={() => {
+              setFilters(
+                Object.fromEntries(
+                  Object.keys(filters).map((key) => [key, ""]),
+                ),
+              );
+              setFriend("");
+            }}
+          >
+            Quitar filtros y usar mi mazo
+          </button>
+        </section>
+        <p className="mt-5 text-sm text-gray-400">
+          {session.total} respuestas · {session.correct} recordadas. Tus
+          preferencias se guardan en este dispositivo.
+        </p>
+      </StudySheet>
+      {(study.pending > 0 || study.offline || study.syncError) && (
+        <div role="status" className="text-xs text-gray-400">
+          {study.pending
+            ? `${study.pending} repasos guardados en este dispositivo, pendientes de sincronizar.`
+            : study.offline
+              ? "Biblioteca sin conexión."
+              : "Repasos sincronizados."}
+          {study.syncError && (
+            <span className="block text-amber-300">
+              {study.syncError}{" "}
+              <button onClick={study.retrySync} className="underline">
+                Reintentar sincronización
+              </button>
+            </span>
+          )}
+        </div>
+      )}
       {error && (
         <p role="alert" className="text-red-300">
           {error}
@@ -683,113 +779,150 @@ function StudyCards({ user, mistakeIds = null }) {
       {sharedLoading ? (
         <p role="status">Cargando mazo compartido…</p>
       ) : word ? (
-        <>
-          {practice === "listen" && !flipped ? (
-            <div className="rounded-3xl bg-gray-800 p-10 text-center space-y-5">
-              <h2 className="text-2xl">Escucha y escribe en alemán</h2>
-              <AudioButton text={germanAnswer(word)} />
-              <p className="text-sm text-gray-400">
-                Incluye el artículo si es un sustantivo.
-              </p>
-            </div>
-          ) : (
-            <ActiveCard
-              palabra={word}
-              flipped={flipped}
-              direction={practice === "listen" ? "es-de" : direction}
-              onClick={() => {
-                setFlipped(!flipped);
-                setFeedback(null);
-              }}
-              isSwipingOut={false}
-            />
-          )}
-          {practice !== "cards" && !flipped && (
-            <form onSubmit={answerForm} className="flex gap-2">
-              <input
-                aria-label="Tu respuesta"
-                autoComplete="off"
-                autoCapitalize="none"
-                spellCheck={false}
-                value={answer}
-                onChange={(event) => setAnswer(event.target.value)}
-                className="min-w-0 flex-1 p-3 bg-gray-800 rounded-xl"
-                placeholder="Tu respuesta"
+        <div className={`study-play ${flipped ? "is-revealed" : ""}`}>
+          <div className="study-card-slot">
+            {practice === "listen" && !flipped ? (
+              <div className="study-card flex flex-col items-center justify-center rounded-3xl bg-gray-800 p-5 text-center gap-4">
+                <h2 className="text-2xl">Escucha y escribe en alemán</h2>
+                <AudioButton text={germanAnswer(word)} />
+                <p className="text-sm text-gray-400">
+                  Incluye el artículo si es un sustantivo.
+                </p>
+              </div>
+            ) : (
+              <ActiveCard
+                palabra={word}
+                flipped={flipped}
+                direction={practice === "listen" ? "es-de" : direction}
+                onClick={() => {
+                  setFlipped(!flipped);
+                  setFeedback(null);
+                  setDetailsOpen(false);
+                }}
+                isSwipingOut={false}
               />
+            )}
+            {flipped && (
+              <div className="study-card-audio">
+                <AudioButton text={germanAnswer(word)} compact />
+              </div>
+            )}
+          </div>
+          <div className="study-actions">
+            {practice !== "cards" && !flipped && (
+              <form onSubmit={answerForm} className="flex gap-2">
+                <input
+                  aria-label="Tu respuesta"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  value={answer}
+                  onChange={(event) => setAnswer(event.target.value)}
+                  className="min-w-0 flex-1 p-3 bg-gray-800 rounded-xl"
+                  placeholder="Tu respuesta"
+                />
+                <button
+                  className="p-3 bg-blue-600 rounded-xl"
+                  disabled={!answer.trim()}
+                >
+                  Comprobar
+                </button>
+              </form>
+            )}
+            {!flipped && (
               <button
-                className="p-3 bg-blue-600 rounded-xl"
-                disabled={!answer.trim()}
+                onClick={() => setFlipped(true)}
+                className={`w-full py-3 rounded-xl ${practice === "cards" ? "bg-blue-600 font-semibold" : "text-gray-400 text-sm"}`}
               >
-                Comprobar
+                Mostrar respuesta
               </button>
-            </form>
-          )}
-          {!flipped && (
-            <button
-              onClick={() => setFlipped(true)}
-              className="w-full py-3 rounded-xl bg-gray-800"
-            >
-              Mostrar respuesta
-            </button>
-          )}
-          {flipped && (
-            <>
-              {feedback && (
-                <div role="status" className="p-4 bg-gray-800 rounded-xl">
+            )}
+            {flipped && (
+              <>
+                <div className="flex items-center justify-between gap-2 text-sm">
                   <p
+                    role="status"
                     className={
-                      feedback.correct ? "text-green-300" : "text-amber-300"
+                      feedback?.correct ? "text-green-300" : "text-gray-300"
                     }
                   >
-                    {feedback.message}
+                    {feedback
+                      ? feedback.correct
+                        ? "Correcto"
+                        : `Revisa: ${ERROR_LABELS[feedback.type] || "respuesta"}`
+                      : "¿Cómo te ha ido?"}
                   </p>
-                  <p className="mt-2">
-                    Solución: <strong>{feedback.expected}</strong>
-                  </p>
-                  {!feedback.correct && (
-                    <p className="text-xs text-gray-400 mt-2">
-                      Si tu alternativa es válida, puedes marcar «Bien». Añádela
-                      en la biblioteca para aceptarla en próximos ejercicios.
-                    </p>
-                  )}
-                </div>
-              )}
-              <AudioButton text={germanAnswer(word)} />
-              <label className="block text-sm text-gray-300">
-                Si fallaste, ¿qué costó?
-                <select
-                  aria-label="Tipo de error"
-                  value={errorType}
-                  onChange={(e) => setErrorType(e.target.value)}
-                  className="ml-2 p-2 rounded-lg bg-gray-800"
-                >
-                  {Object.entries(ERROR_LABELS).map(([key, label]) => (
-                    <option value={key} key={key}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {RATINGS.map(([rating, label]) => (
                   <button
-                    key={rating}
-                    aria-label={label}
-                    disabled={busy}
-                    onClick={() => rate(rating)}
-                    className={`p-3 rounded-xl font-semibold ${rating === 1 ? "bg-red-900/70" : "bg-teal-900/70"}`}
+                    type="button"
+                    className="shrink-0 px-2 py-3 text-blue-300"
+                    onClick={() => setDetailsOpen(true)}
                   >
-                    {label}
-                    <small className="block text-xs font-normal opacity-70">
-                      {interval(rating)}
-                    </small>
+                    Ver detalle
                   </button>
-                ))}
-              </div>
-              <WordLearningPanel word={word} />
-            </>
-          )}
-        </>
+                </div>
+                <div className="study-ratings grid grid-cols-4 gap-2">
+                  {RATINGS.map(([rating, label]) => (
+                    <button
+                      key={rating}
+                      aria-label={label}
+                      disabled={busy}
+                      onClick={() => rate(rating)}
+                      className={`px-1 py-3 rounded-xl text-sm font-semibold ${rating === 1 ? "bg-red-900/70" : "bg-teal-900/70"}`}
+                    >
+                      {label}
+                      <small className="block text-xs font-normal opacity-70">
+                        {interval(rating)}
+                      </small>
+                    </button>
+                  ))}
+                </div>
+                <StudySheet
+                  open={detailsOpen}
+                  onClose={() => setDetailsOpen(false)}
+                  title="Sobre esta respuesta"
+                >
+                  {feedback && (
+                    <div role="status" className="space-y-2 mb-5">
+                      <p
+                        className={
+                          feedback.correct ? "text-green-300" : "text-amber-300"
+                        }
+                      >
+                        {feedback.message}
+                      </p>
+                      <p>
+                        Solución: <strong>{feedback.expected}</strong>
+                      </p>
+                      {!feedback.correct && (
+                        <p className="text-sm text-gray-400">
+                          Si tu alternativa es válida, puedes marcar «Bien».
+                          Añádela en la biblioteca para aceptarla en próximos
+                          ejercicios.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  <label className="block text-sm text-gray-300">
+                    Si fallaste, ¿qué costó?
+                    <select
+                      aria-label="Tipo de error"
+                      value={errorType}
+                      onChange={(event) => setErrorType(event.target.value)}
+                      className="block w-full mt-2 p-3 rounded-xl bg-gray-800"
+                    >
+                      {Object.entries(ERROR_LABELS).map(([key, label]) => (
+                        <option value={key} key={key}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <WordLearningPanel word={word} />
+                </StudySheet>
+              </>
+            )}
+          </div>
+        </div>
       ) : (
         <section className="rounded-3xl bg-gray-800 p-7 text-center space-y-3">
           <h2 className="text-2xl font-bold">
@@ -819,37 +952,73 @@ function StudyCards({ user, mistakeIds = null }) {
 }
 function Game({ user }) {
   const [tab, setTab] = useState("cards");
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [mistakeIds, setMistakeIds] = useState(null);
-  return (
-    <div>
-      <nav aria-label="Práctica" className="flex gap-2 mb-5">
-        {[
-          ["cards", "Repasar"],
-          ["contrasts", "Contrastes"],
-          ["mistakes", "Mis errores"],
-        ].map(([value, label]) => (
-          <button
-            key={value}
-            onClick={() => {
-              setTab(value);
-              setMistakeIds(null);
-            }}
-            className={`flex-1 text-sm p-3 rounded-xl ${tab === value ? "bg-blue-600" : "bg-gray-800"}`}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-      {tab === "cards" && <StudyCards user={user} mistakeIds={mistakeIds} />}
-      {tab === "contrasts" && <ContrastPractice user={user} />}
-      {tab === "mistakes" && (
-        <MistakesNotebook
-          user={user}
-          onPractice={(ids) => {
-            setMistakeIds(ids);
-            setTab("cards");
+  const modePicker = (
+    <nav aria-label="Práctica" className="grid grid-cols-3 gap-2">
+      {[
+        ["cards", "Repasar"],
+        ["contrasts", "Contrastes"],
+        ["mistakes", "Mis errores"],
+      ].map(([value, label]) => (
+        <button
+          key={value}
+          type="button"
+          aria-pressed={tab === value}
+          onClick={() => {
+            setTab(value);
+            setMistakeIds(null);
+            setSettingsOpen(false);
           }}
+          className={`text-sm py-3 px-2 rounded-xl ${tab === value ? "bg-blue-600" : "bg-gray-800"}`}
+        >
+          {label}
+        </button>
+      ))}
+    </nav>
+  );
+  return (
+    <div className={`game-view ${tab === "cards" ? "game-view-cards" : ""}`}>
+      {tab === "cards" ? (
+        <StudyCards
+          key={user.uid}
+          user={user}
+          mistakeIds={mistakeIds}
+          modePicker={modePicker}
         />
+      ) : (
+        <>
+          <header className="study-toolbar mb-3">
+            <span className="text-sm text-gray-400">
+              {tab === "contrasts" ? "Contrastes" : "Mis errores"}
+            </span>
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              className="rounded-xl bg-white/5 px-3 py-3 text-sm"
+              aria-label="Ajustes de práctica"
+            >
+              Cambiar práctica
+            </button>
+          </header>
+          <StudySheet
+            open={settingsOpen}
+            onClose={() => setSettingsOpen(false)}
+            title="Tu práctica"
+          >
+            {modePicker}
+          </StudySheet>
+          {tab === "contrasts" && <ContrastPractice user={user} />}
+          {tab === "mistakes" && (
+            <MistakesNotebook
+              user={user}
+              onPractice={(ids) => {
+                setMistakeIds(ids);
+                setTab("cards");
+              }}
+            />
+          )}
+        </>
       )}
     </div>
   );
