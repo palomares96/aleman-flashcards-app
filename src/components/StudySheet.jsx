@@ -1,7 +1,13 @@
 import React, { useEffect, useRef } from "react";
 
 // Native modal: focus stays inside, Escape closes, and focus returns to the opener.
-export default function StudySheet({ open, onClose, title, children }) {
+export default function StudySheet({
+  open,
+  onClose,
+  title,
+  children,
+  closeLabel = "Listo",
+}) {
   const dialog = useRef(null);
   useEffect(() => {
     const node = dialog.current;
@@ -27,7 +33,7 @@ export default function StudySheet({ open, onClose, title, children }) {
             onClick={onClose}
             className="rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold"
           >
-            Listo
+            {closeLabel}
           </button>
         </header>
         {open && children}

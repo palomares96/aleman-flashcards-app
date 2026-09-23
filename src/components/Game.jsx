@@ -318,6 +318,7 @@ const ActiveCard = ({ palabra, flipped, direction, onClick, isSwipingOut }) => {
 function StudyCards({ user, mistakeIds = null, modePicker }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [reasonOpen, setReasonOpen] = useState(false);
   const [saved] = useState(() => {
     try {
       return (
@@ -441,6 +442,7 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
     setAnswer("");
     setFeedback(null);
     setDetailsOpen(false);
+    setReasonOpen(false);
     setClock(Date.now());
   }, [direction, practice, mode, filters, friend, mistakeIds]);
   const source = friend ? sharedWords : study.items;
@@ -534,7 +536,7 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
     setErrorType(result.type || "meaning");
     setFlipped(true);
   };
-  const rate = (rating) => {
+  const rate = (rating, reason = errorType) => {
     if (!word || !flipped || busy) return;
     setBusy(true);
     setError("");
@@ -548,7 +550,7 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
         german: word.german,
         spanish: word.spanish,
         rating,
-        errorType,
+        errorType: reason,
         answer,
         mode: practice,
         filters,
@@ -565,6 +567,7 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
       setAnswer("");
       setFeedback(null);
       setDetailsOpen(false);
+      setReasonOpen(false);
       setErrorType("meaning");
     } catch (failure) {
       setError(`No se guardó el repaso. ${failure.message}`);
@@ -860,22 +863,72 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
                     Ver detalle
                   </button>
                 </div>
-                <div className="study-ratings grid grid-cols-4 gap-2">
-                  {RATINGS.map(([rating, label]) => (
+                <div
+                  className={`study-ratings grid gap-2 ${practice === "cards" ? "grid-cols-2" : "grid-cols-4"}`}
+                >
+                  {(practice === "cards"
+                    ? [
+                        [1, "No me la sé"],
+                        [3, "Me la sé"],
+                      ]
+                    : RATINGS
+                  ).map(([rating, label]) => (
                     <button
                       key={rating}
                       aria-label={label}
                       disabled={busy}
-                      onClick={() => rate(rating)}
+                      onClick={() =>
+                        rating === 1 ? setReasonOpen(true) : rate(rating)
+                      }
                       className={`px-1 py-3 rounded-xl text-sm font-semibold ${rating === 1 ? "bg-red-900/70" : "bg-teal-900/70"}`}
                     >
                       {label}
-                      <small className="block text-xs font-normal opacity-70">
-                        {interval(rating)}
-                      </small>
+                      {practice !== "cards" && (
+                        <small className="block text-xs font-normal opacity-70">
+                          {interval(rating)}
+                        </small>
+                      )}
                     </button>
                   ))}
                 </div>
+                <StudySheet
+                  open={reasonOpen}
+                  onClose={() => setReasonOpen(false)}
+                  title="¿Qué te costó?"
+                  closeLabel="Volver"
+                >
+                  <p className="text-sm text-gray-400 mb-4">
+                    Opcional. Toca un motivo para seguir.
+                  </p>
+                  {error && (
+                    <p role="alert" className="mb-3 text-sm text-red-300">
+                      {error}
+                    </p>
+                  )}
+                  <div className="grid grid-cols-2 gap-2">
+                    {Object.entries(ERROR_LABELS)
+                      .filter(([key]) => key !== "unspecified")
+                      .map(([key, label]) => (
+                        <button
+                          type="button"
+                          key={key}
+                          disabled={busy}
+                          onClick={() => rate(1, key)}
+                          className="rounded-xl bg-gray-800 px-3 py-3 text-sm text-left"
+                        >
+                          {label}
+                        </button>
+                      ))}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => rate(1, feedback?.type || "unspecified")}
+                    className="mt-4 w-full rounded-xl bg-blue-600 px-3 py-3 font-semibold"
+                  >
+                    Siguiente sin elegir motivo
+                  </button>
+                </StudySheet>
                 <StudySheet
                   open={detailsOpen}
                   onClose={() => setDetailsOpen(false)}
@@ -902,21 +955,6 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
                       )}
                     </div>
                   )}
-                  <label className="block text-sm text-gray-300">
-                    Si fallaste, ¿qué costó?
-                    <select
-                      aria-label="Tipo de error"
-                      value={errorType}
-                      onChange={(event) => setErrorType(event.target.value)}
-                      className="block w-full mt-2 p-3 rounded-xl bg-gray-800"
-                    >
-                      {Object.entries(ERROR_LABELS).map(([key, label]) => (
-                        <option value={key} key={key}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
                   <WordLearningPanel word={word} />
                 </StudySheet>
               </>

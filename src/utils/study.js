@@ -7,6 +7,7 @@ export const scheduler = fsrs({
   maximum_interval: 3650,
 });
 export const ERROR_LABELS = {
+  unspecified: "Sin especificar",
   meaning: "Significado",
   article: "Artículo",
   capitalization: "Mayúsculas",

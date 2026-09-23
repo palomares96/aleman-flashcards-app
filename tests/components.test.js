@@ -218,12 +218,60 @@ test('typed study requires reveal, classifies errors and persists the chosen dir
     assert.match(container().textContent, /minúscula/);
     await closeSheet();
     await click([...document.querySelectorAll('button')].find(button => button.getAttribute('aria-label') === 'Otra vez'));
+    await click(button('Siguiente sin elegir motivo'));
     const event = ui.state.writes.find(write => write.ref.path.includes('/reviewEvents/')).data;
     assert.equal(event.direction, 'es-de');
     assert.equal(event.errorType, 'capitalization');
     assert.equal(event.german, 'stellen');
     assert.equal(event.rating, 1);
     assert.equal(document.querySelector('aside'), null);
+  } finally { await unmount(); }
+});
+
+test('word cards offer two choices and knowing a card records success without asking a reason', async () => {
+  const unmount = await mount(ui.Game);
+  try {
+    await click(button('Mostrar respuesta'));
+    assert.ok(button('Me la sé'));
+    assert.ok(button('No me la sé'));
+    assert.equal(button('Difícil'), undefined);
+    assert.equal(button('Fácil'), undefined);
+    await click(button('Ver detalle'));
+    assert.equal(document.querySelector('[aria-label="Tipo de error"]'), null);
+    await closeSheet();
+    await click(button('Me la sé'));
+    const events = ui.state.writes.filter(write => write.ref.path.includes('/reviewEvents/'));
+    assert.equal(events.length, 1);
+    assert.equal(events[0].data.rating, 3);
+    assert.equal(document.querySelector('dialog[open]'), null);
+  } finally { await unmount(); }
+});
+
+test('not knowing a card asks for an optional one-tap reason and supports returning or skipping', async () => {
+  const unmount = await mount(ui.Game);
+  try {
+    await click(button('Mostrar respuesta'));
+    await click(button('No me la sé'));
+    assert.ok(document.querySelector('dialog[open][aria-label="¿Qué te costó?"]'));
+    assert.equal(ui.state.writes.filter(write => write.ref.path.includes('/reviewEvents/')).length, 0);
+    await click(button('Volver'));
+    assert.ok(button('Me la sé'));
+    await click(button('No me la sé'));
+    await click(button('Conjugación'));
+    let events = ui.state.writes.filter(write => write.ref.path.includes('/reviewEvents/'));
+    assert.equal(events.length, 1);
+    assert.equal(events[0].data.rating, 1);
+    assert.equal(events[0].data.errorType, 'conjugation');
+    await click(button('Mostrar respuesta'));
+    await click(button('No me la sé'));
+    await click(button('Siguiente sin elegir motivo'));
+    events = ui.state.writes.filter(write => write.ref.path.includes('/reviewEvents/'));
+    assert.equal(events.length, 2);
+    assert.equal(events[1].data.errorType, 'unspecified');
+    const progress = ui.state.writes.filter(write => write.ref.path.includes('/studyProgress/')).at(-1).data;
+    assert.equal(progress.incorrect, 1);
+    assert.equal(progress.mistakes.unspecified, 1);
+    assert.equal(progress.mistakes.meaning, undefined);
   } finally { await unmount(); }
 });
 
