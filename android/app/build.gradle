@@ -1,5 +1,11 @@
 apply plugin: 'com.android.application'
 
+def signingEnv = ['CM_KEYSTORE_PATH', 'CM_KEYSTORE_PASSWORD', 'CM_KEY_ALIAS', 'CM_KEY_PASSWORD']
+def hasCiSigning = signingEnv.every { System.getenv(it) }
+if (signingEnv.any { System.getenv(it) } && !hasCiSigning) {
+    throw new GradleException('Incomplete Codemagic signing configuration; configure all four CM_KEYSTORE/KEY variables.')
+}
+
 android {
     namespace = "com.aleman.flashcards"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +13,8 @@ android {
         applicationId "com.aleman.flashcards"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode = (project.findProperty('releaseVersionCode') ?: '2').toInteger()
+        versionName = project.findProperty('releaseVersionName') ?: '1.1.0'
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,14 +22,26 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (hasCiSigning) {
+            codemagic {
+                storeFile file(System.getenv('CM_KEYSTORE_PATH'))
+                storePassword System.getenv('CM_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('CM_KEY_ALIAS')
+                keyPassword System.getenv('CM_KEY_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
+            if (hasCiSigning) {
+                signingConfig signingConfigs.codemagic
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }
-
 repositories {
     flatDir{
         dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'

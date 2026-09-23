@@ -45,6 +45,8 @@ See [learning-platform.md](docs/learning-platform.md) for architecture, security
 
 ## Deployment
 
+Android builds and Google Play Alpha releases use [Codemagic](docs/android-releases.md), without Android Studio. Pushes to `main` verify compilation; the signed release workflow runs manually or from an `android-v*` tag after the one-time signing and Play credentials setup.
+
 Deployment is separate from a git merge. Configure `GEMINI_MODEL` (required), `GEMINI_LOCATION`, and daily AI limits, then follow the coordinated Functions/rules/indexes/frontend/native rollout in the release document. Existing clients are incompatible with the new identity/friendship write restrictions. Do not roll back to permissive rules.
 
 The old `migrateWords.js` is retained as a historical script only. Use `scripts/enrich-vocabulary.mjs` for reviewed vocabulary migrations; never run the historical script against a live deck.

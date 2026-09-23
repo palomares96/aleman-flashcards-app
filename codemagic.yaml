@@ -1,0 +1,102 @@
+workflows:
+  android-check:
+    name: Android - checks and unsigned bundle
+    instance_type: mac_mini_m2
+    max_build_duration: 45
+    environment:
+      node: 22
+      java: 21
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+      cancel_previous_builds: true
+    scripts:
+      - &install
+        name: Install locked dependencies
+        script: |
+          set -euo pipefail
+          npm ci
+          npm ci --prefix functions
+      - &checks
+        name: Lint and test
+        script: |
+          set -euo pipefail
+          npm run lint
+          npm --prefix functions run lint
+          npm test
+          npm run test:rules
+      - &web
+        name: Build web assets and sync Capacitor
+        script: |
+          set -euo pipefail
+          export VITE_USE_EMULATOR=false
+          npm run build
+          npx cap sync android
+          printf 'sdk.dir=%s\n' "$ANDROID_SDK_ROOT" > android/local.properties
+      - name: Compile unsigned Android bundle
+        script: |
+          set -euo pipefail
+          cd android
+          bash gradlew --no-daemon bundleRelease
+          mkdir -p "$CM_BUILD_DIR/build-artifacts"
+          cp app/build/outputs/bundle/release/app-release.aab "$CM_BUILD_DIR/build-artifacts/flashcards-unsigned.aab"
+    artifacts:
+      - build-artifacts/flashcards-unsigned.aab
+
+  android-alpha:
+    name: Android - signed Google Play Alpha release
+    instance_type: mac_mini_m2
+    max_build_duration: 45
+    environment:
+      node: 22
+      java: 21
+      android_signing:
+        - aleman_upload
+      groups:
+        - aleman_google_play
+      vars:
+        PACKAGE_NAME: com.aleman.flashcards
+    # Release explicitly with an android-v* tag, or start this workflow manually.
+    # Signing and publishing credentials are never available to android-check.
+    triggering:
+      events:
+        - tag
+      tag_patterns:
+        - pattern: android-v*
+          include: true
+      cancel_previous_builds: false
+    scripts:
+      - name: Verify upload key and Google Play access
+        script: |
+          set -euo pipefail
+          : "${CM_KEYSTORE_PATH:?Missing aleman_upload keystore}"
+          : "${CM_KEYSTORE_PASSWORD:?Missing keystore password}"
+          : "${CM_KEY_ALIAS:?Missing key alias}"
+          : "${CM_KEY_PASSWORD:?Missing key password}"
+          : "${GOOGLE_PLAY_SERVICE_ACCOUNT_CREDENTIALS:?Missing Google Play credentials}"
+          keytool -J-Duser.language=en -list -v \
+            -keystore "$CM_KEYSTORE_PATH" -storepass:env CM_KEYSTORE_PASSWORD \
+            -alias "$CM_KEY_ALIAS" | grep -Fq 'CB:10:AA:7E:BD:2D:AF:C1:09:62:84:D1:03:04:4F:F0:0E:E5:C3:29:82:8B:28:BF:9E:0F:19:8C:4F:39:F6:EC'
+          LATEST=$(google-play get-latest-build-number --package-name "$PACKAGE_NAME")
+          [[ "$LATEST" =~ ^[0-9]+$ ]] || { echo 'Could not read the latest Google Play version code'; exit 1; }
+          echo "RELEASE_VERSION_CODE=$((LATEST + 1))" >> "$CM_ENV"
+      - *install
+      - *checks
+      - *web
+      - name: Build and verify signed Android bundle
+        script: |
+          set -euo pipefail
+          cd android
+          bash gradlew --no-daemon bundleRelease -PreleaseVersionCode="$RELEASE_VERSION_CODE"
+          AAB=app/build/outputs/bundle/release/app-release.aab
+          jarsigner -verify "$AAB"
+          keytool -J-Duser.language=en -printcert -jarfile "$AAB" | grep -Fq 'CB:10:AA:7E:BD:2D:AF:C1:09:62:84:D1:03:04:4F:F0:0E:E5:C3:29:82:8B:28:BF:9E:0F:19:8C:4F:39:F6:EC'
+    artifacts:
+      - android/app/build/outputs/bundle/release/app-release.aab
+    publishing:
+      google_play:
+        credentials: $GOOGLE_PLAY_SERVICE_ACCOUNT_CREDENTIALS
+        track: alpha
