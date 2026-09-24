@@ -117,9 +117,9 @@ const setValue = async (selector, value) => {
     element.dispatchEvent(new window.Event(element.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }));
   });
 };
-async function mount(Component) {
+async function mount(Component, rows = [baseWord()]) {
   ui.clearStudyMemory('test'); localStorage.clear();
-  ui.state.rows = [baseWord()]; ui.state.writes = []; ui.state.records = {}; ui.state.aiCalls = []; ui.state.failSave = false;
+  ui.state.rows = rows; ui.state.writes = []; ui.state.records = {}; ui.state.aiCalls = []; ui.state.failSave = false;
   const root = ui.createRoot(container());
   await ui.act(async () => root.render(ui.createElement(Component, { user: { uid: 'test' } })));
   return async () => ui.act(async () => root.unmount());
@@ -282,6 +282,48 @@ test('not knowing a card asks for an optional one-tap reason and supports return
     assert.equal(progress.incorrect, 1);
     assert.equal(progress.mistakes.unspecified, 1);
     assert.equal(progress.mistakes.meaning, undefined);
+  } finally { await unmount(); }
+});
+
+test('a completed round summarizes results and retries only the missed cards until all are known', async () => {
+  const rows = [
+    { id: 'a', german: 'Haus', spanish: 'casa', type: 'noun', difficulty: 1, attributes: { gender: 'n' } },
+    { id: 'b', german: 'Buch', spanish: 'libro', type: 'noun', difficulty: 1, attributes: { gender: 'n' } },
+  ];
+  const unmount = await mount(ui.Game, rows);
+  try {
+    await click(button('Mostrar respuesta'));
+    await click(button('No me la sé'));
+    await click(button('Continuar sin motivo'));
+    await click(button('Siguiente ficha'));
+    await click(button('Mostrar respuesta'));
+    await click(button('Me la sé'));
+    await click(button('Siguiente ficha'));
+    assert.match(container().textContent, /1 aciertos · 1 fallos/);
+    assert.ok(button('Reintentar 1 fallos'));
+    await click(button('Reintentar 1 fallos'));
+    assert.match(container().textContent, /Haus/);
+    assert.doesNotMatch(container().textContent, /Buch/);
+    await click(button('Mostrar respuesta'));
+    await click(button('Me la sé'));
+    await click(button('Siguiente ficha'));
+    assert.match(container().textContent, /Repaso completo/);
+    assert.match(container().textContent, /2 fichas/);
+    assert.equal(ui.state.writes.filter(write => write.ref.path.includes('/reviewEvents/')).length, 3);
+  } finally { await unmount(); }
+});
+
+test('turning over a base verb shows its forms and a compact derived-verb summary', async () => {
+  const unmount = await mount(ui.Game);
+  try {
+    const front = document.querySelector('.study-card-face[aria-hidden="false"]');
+    assert.doesNotMatch(front.textContent, /Derivados/);
+    await click(button('Mostrar respuesta'));
+    const back = document.querySelector('.study-card-face[aria-hidden="false"]');
+    assert.match(back.textContent, /Conjugación:/);
+    assert.match(back.textContent, /stellt · stellte · gestellt/);
+    assert.match(back.textContent, /Derivados/);
+    assert.match(back.textContent, /vorstellen/);
   } finally { await unmount(); }
 });
 

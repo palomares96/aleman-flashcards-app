@@ -1,22 +1,26 @@
 import StudySheet from "./StudySheet.jsx";
 import WordLearningPanel from "./WordLearningPanel.jsx";
-import { expandVocabulary, normalizeGerman } from "../utils/vocabulary.js";
+import {
+  composeSeparableVerb,
+  enrichWord,
+  expandVocabulary,
+  normalizeGerman,
+  normalizePrefixes,
+} from "../utils/vocabulary.js";
 import React, { useState, useEffect, useRef } from "react";
 import { useStudyData } from "../hooks/useStudyData.js";
-import { recordReview, pendingReviews } from "../services/studyStore.js";
+import { recordReview } from "../services/studyStore.js";
 import { readCollection } from "../services/repository.js";
 import {
   studyId,
-  dailyQueue,
   progressStats,
-  localDay,
   germanAnswer,
   checkAnswer,
   ERROR_LABELS,
 } from "../utils/study.js";
+import { orderStudyCards } from "../utils/studyQueue.js";
 import AudioButton from "./AudioButton.jsx";
 import ContrastPractice from "./ContrastPractice.jsx";
-import MistakesNotebook from "./MistakesNotebook.jsx";
 
 // --- ICONOS ---
 const FilterIcon = () => (
@@ -149,6 +153,23 @@ const CardFace = ({
 
   const neutralGradient = "bg-gradient-to-br from-gray-700 to-gray-800";
   const faceGradient = isGermanSide ? baseGradientClasses : neutralGradient;
+  const revealedVerb =
+    !isFront && palabra.type === "verb" && !palabra.isDerived
+      ? enrichWord(palabra)
+      : null;
+  const family = revealedVerb
+    ? normalizePrefixes(revealedVerb.attributes.separablePrefixes)
+        .map((item) => ({
+          ...item,
+          german: composeSeparableVerb(revealedVerb.german, item.prefix),
+        }))
+        .filter((item) => item.german)
+    : [];
+  const forms =
+    revealedVerb?.grammar?.principalParts ||
+    (revealedVerb?.attributes?.pastTense && revealedVerb?.attributes?.participle
+      ? `${revealedVerb.attributes.pastTense} · ${revealedVerb.attributes.participle}`
+      : "");
 
   return (
     <div
@@ -192,21 +213,42 @@ const CardFace = ({
             {palabra.learning.hintEs}
           </p>
         )}
-        <p className="text-sm text-white/80 font-medium tracking-wide">
-          {typeInfo}
-        </p>
+        {!(revealedVerb && !isGermanSide) && (
+          <p className="text-sm text-white/80 font-medium tracking-wide">
+            {typeInfo}
+          </p>
+        )}
 
-        {/* Info extra para verbos (solo cara alemana) */}
-        {isGermanSide &&
-          palabra.type === "verb" &&
-          !palabra.isDerived &&
-          palabra.attributes?.pastTense && (
-            <div className="mt-2 pt-2 border-t border-white/20 w-full">
-              <p className="text-sm text-white/90 opacity-90 font-mono">
-                {palabra.attributes.pastTense}, {palabra.attributes.participle}
+        {revealedVerb && (
+          <div className="mt-3 pt-3 border-t border-white/20 space-y-2 text-sm">
+            {!isGermanSide && (
+              <p className="font-semibold text-white">{revealedVerb.german}</p>
+            )}
+            <p className="text-white/90">
+              <span className="font-semibold">Conjugación:</span>{" "}
+              {forms || "Aún no añadida"}
+            </p>
+            {revealedVerb.grammar?.auxiliary && (
+              <p className="text-white/75">
+                Perfekt con {revealedVerb.grammar.auxiliary}
               </p>
-            </div>
-          )}
+            )}
+            {family.length > 0 && (
+              <div className="pt-2 border-t border-white/15">
+                <p className="font-semibold text-white/90 mb-1">
+                  Derivados · {Math.min(2, family.length)} de {family.length}
+                </p>
+                <ul className="space-y-1 text-white/85">
+                  {family.slice(0, 2).map((item) => (
+                    <li key={item.prefix} className="break-words">
+                      {item.german} · {item.meaning}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Footer */}
@@ -313,7 +355,7 @@ const ActiveCard = ({ palabra, flipped, direction, onClick, isSwipingOut }) => {
 // =================================================================================
 // LÓGICA DEL JUEGO (GAME)
 // =================================================================================
-function StudyCards({ user, mistakeIds = null, modePicker }) {
+function StudyCards({ user, modePicker }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [reasonOpen, setReasonOpen] = useState(false);
@@ -329,44 +371,27 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
   const study = useStudyData(user.uid);
   const sessionId = useRef(crypto.randomUUID());
   const [direction, setDirection] = useState(
-    mistakeIds
-      ? mistakeIds.direction === "es-de"
-        ? "es-de"
-        : "de-es"
-      : saved.direction === "es-de"
-        ? "es-de"
-        : "de-es",
+    saved.direction === "es-de" ? "es-de" : "de-es",
   );
   const [practice, setPractice] = useState(
-    mistakeIds
-      ? mistakeIds.direction === "listen"
-        ? "listen"
-        : "cards"
-      : ["cards", "type", "listen"].includes(saved.practice)
-        ? saved.practice
-        : "cards",
+    ["cards", "type", "listen"].includes(saved.practice)
+      ? saved.practice
+      : "cards",
   );
   const [mode, setMode] = useState(
-    mistakeIds
-      ? "mistakes"
-      : ["due", "review", "random"].includes(saved.mode)
-        ? saved.mode
-        : "due",
+    ["review", "random", "smart"].includes(saved.mode) ? saved.mode : "review",
   );
   const [filters, setFilters] = useState(() =>
     Object.fromEntries(
       ["type", "categoryId", "difficulty", "gender", "case", "performance"].map(
         (key) => [
           key,
-          !mistakeIds && typeof saved.filters?.[key] === "string"
-            ? saved.filters[key]
-            : "",
+          typeof saved.filters?.[key] === "string" ? saved.filters[key] : "",
         ],
       ),
     ),
   );
   useEffect(() => {
-    if (mistakeIds) return;
     try {
       localStorage.setItem(
         `study-options:${user.uid}`,
@@ -375,10 +400,8 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
     } catch {
       /* Practice remains usable when browser storage is unavailable. */
     }
-  }, [user.uid, direction, practice, mode, filters, mistakeIds]);
-  const [friend, setFriend] = useState(
-    mistakeIds?.sourceUid !== user.uid ? mistakeIds?.sourceUid || "" : "",
-  );
+  }, [user.uid, direction, practice, mode, filters]);
+  const [friend, setFriend] = useState("");
   const [friends, setFriends] = useState([]);
   const [sharedWords, setSharedWords] = useState([]);
   const [sharedLoading, setSharedLoading] = useState(false);
@@ -388,9 +411,15 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
   const [reviewed, setReviewed] = useState(null);
   const [errorType, setErrorType] = useState("meaning");
   const [error, setError] = useState("");
-  const [session, setSession] = useState({ total: 0, correct: 0 });
+  const [session, setSession] = useState({
+    total: 0,
+    correct: 0,
+    incorrect: [],
+  });
+  const [retryPool, setRetryPool] = useState(null);
+  const [round, setRound] = useState(1);
+  const [cycleSize, setCycleSize] = useState(0);
   const [done, setDone] = useState([]);
-  const [clock, setClock] = useState(Date.now());
   const [busy, setBusy] = useState(false);
   const activeDirection = practice === "listen" ? "listen" : direction;
   const ownerUid = friend || user.uid;
@@ -436,15 +465,17 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
   useEffect(() => {
     sessionId.current = crypto.randomUUID();
     setDone([]);
-    setSession({ total: 0, correct: 0 });
+    setSession({ total: 0, correct: 0, incorrect: [] });
+    setRetryPool(null);
+    setRound(1);
+    setCycleSize(0);
     setFlipped(false);
     setAnswer("");
     setFeedback(null);
     setReviewed(null);
     setDetailsOpen(false);
     setReasonOpen(false);
-    setClock(Date.now());
-  }, [direction, practice, mode, filters, friend, mistakeIds]);
+  }, [direction, practice, mode, filters, friend]);
   const source = friend ? sharedWords : study.items;
   const filtered = source.filter((word) => {
     if (filters.type && word.type !== filters.type) return false;
@@ -466,44 +497,17 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
       (!p.incorrect || p.errorRate <= 0.3)
     )
       return false;
-    if (
-      mode === "mistakes" &&
-      !(mistakeIds ? mistakeIds.ids.includes(id) : p.lastRating === 1)
-    )
-      return false;
     return true;
   });
-  const today = localDay(clock);
-  // Pending introductions count towards the same daily budget as committed ones.
-  const pendingNew = new Set(
-    pendingReviews(user.uid)
-      .filter((event) => event.day === today && event.isNew)
-      .map((event) => event.cardId),
-  ).size;
-  const newLimit = Math.max(
-    0,
-    20 - (study.daily[today]?.newCards || 0) - pendingNew,
-  );
-  const queue = (
-    mode === "due"
-      ? dailyQueue(
-          filtered,
-          study.progress,
-          activeDirection,
-          ownerUid,
-          clock,
-          newLimit,
-        )
-      : filtered
+  const pool = retryPool || filtered;
+  const queue = orderStudyCards(
+    pool,
+    mode,
+    sessionId.current,
+    study.progress,
+    activeDirection,
+    ownerUid,
   ).filter((word) => !done.includes(studyId(word, activeDirection, ownerUid)));
-  if (mode === "random") {
-    const order = (item) =>
-      [...(sessionId.current + item.id)].reduce(
-        (hash, char) => Math.imul(hash ^ char.charCodeAt(0), 16777619) >>> 0,
-        2166136261,
-      );
-    queue.sort((a, b) => order(a) - order(b));
-  }
   const word = reviewed?.word || queue[0];
   const categories = [
     ...new Map(
@@ -548,6 +552,10 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
       setSession((previous) => ({
         total: previous.total + 1,
         correct: previous.correct + Number(rating > 1),
+        incorrect:
+          rating === 1
+            ? [...previous.incorrect, { word, cardId }]
+            : previous.incorrect,
       }));
       setReviewed({ word, cardId, rating, reason });
       setDetailsOpen(false);
@@ -567,7 +575,25 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
     setFeedback(null);
     setErrorType("meaning");
     setDetailsOpen(false);
-    setClock(Date.now());
+  };
+  const restartRound = (onlyMistakes) => {
+    if (onlyMistakes && !session.incorrect.length) return;
+    if (onlyMistakes) {
+      setCycleSize((previous) => previous || session.total);
+      setRetryPool(session.incorrect.map(({ word }) => word));
+      setRound((previous) => previous + 1);
+    } else {
+      setRetryPool(null);
+      setCycleSize(0);
+      setRound(1);
+    }
+    setDone([]);
+    setSession({ total: 0, correct: 0, incorrect: [] });
+    setReviewed(null);
+    setFlipped(false);
+    setAnswer("");
+    setFeedback(null);
+    sessionId.current = crypto.randomUUID();
   };
   const select = (label, value, change, options) => (
     <label className="text-sm text-gray-300">
@@ -649,10 +675,9 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
         </div>
         <div className="grid grid-cols-2 gap-3">
           {select("Sesión", mode, setMode, [
-            ["due", "Repasos pendientes"],
-            ["review", "Todo el mazo"],
-            ["random", "Al azar"],
-            ["mistakes", "Últimos fallos"],
+            ["review", "Repaso"],
+            ["random", "Repaso aleatorio"],
+            ["smart", "Aleatorio inteligente"],
           ])}
           {select("Ejercicio", practice, setPractice, [
             ["cards", "Tarjetas"],
@@ -974,26 +999,45 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
           </div>
         </div>
       ) : (
-        <section className="rounded-3xl bg-gray-800 p-7 text-center space-y-3">
+        <section className="rounded-3xl bg-gray-800 p-6 text-center space-y-4">
           <h2 className="text-2xl font-bold">
-            {source.length ? "Sesión terminada" : "Todavía no hay palabras"}
+            {session.total
+              ? session.incorrect.length
+                ? `Ronda ${round} completada`
+                : "¡Repaso completo!"
+              : "Todavía no hay palabras"}
           </h2>
-          <p className="text-gray-300">
-            {source.length
-              ? "Los repasos tienen prioridad. En la sesión de pendientes se introducen hasta 20 tarjetas nuevas al día entre todas las direcciones."
-              : "Añade vocabulario desde Biblioteca para empezar."}
-          </p>
-          {source.length > 0 && (
-            <button
-              onClick={() => {
-                setDone([]);
-                sessionId.current = crypto.randomUUID();
-                setClock(Date.now());
-              }}
-              className="p-3 bg-blue-600 rounded-xl"
-            >
-              Comprobar próximos repasos
-            </button>
+          {session.total ? (
+            <>
+              <p className="text-gray-300">
+                {session.correct} aciertos · {session.incorrect.length} fallos
+              </p>
+              <p className="text-sm text-gray-400">
+                {session.incorrect.length
+                  ? `Quedan ${session.incorrect.length} de ${cycleSize || session.total} fichas por acertar.`
+                  : `Has acertado las ${cycleSize || session.total} fichas de este repaso.`}
+              </p>
+              {session.incorrect.length > 0 && (
+                <button
+                  onClick={() => restartRound(true)}
+                  className="w-full p-3 bg-orange-700 rounded-xl font-semibold"
+                >
+                  Reintentar {session.incorrect.length} fallos
+                </button>
+              )}
+              <button
+                onClick={() => restartRound(false)}
+                className="w-full p-3 bg-blue-600 rounded-xl"
+              >
+                Empezar otro repaso
+              </button>
+            </>
+          ) : (
+            <p className="text-gray-300">
+              {source.length
+                ? "Prueba a quitar algún filtro en Ajustes."
+                : "Añade vocabulario desde Biblioteca para empezar."}
+            </p>
           )}
         </section>
       )}
@@ -1003,13 +1047,11 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
 function Game({ user }) {
   const [tab, setTab] = useState("cards");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [mistakeIds, setMistakeIds] = useState(null);
   const modePicker = (
-    <nav aria-label="Práctica" className="grid grid-cols-3 gap-2">
+    <nav aria-label="Práctica" className="grid grid-cols-2 gap-2">
       {[
         ["cards", "Repasar"],
         ["contrasts", "Contrastes"],
-        ["mistakes", "Mis errores"],
       ].map(([value, label]) => (
         <button
           key={value}
@@ -1017,7 +1059,6 @@ function Game({ user }) {
           aria-pressed={tab === value}
           onClick={() => {
             setTab(value);
-            setMistakeIds(null);
             setSettingsOpen(false);
           }}
           className={`text-sm py-3 px-2 rounded-xl ${tab === value ? "bg-blue-600" : "bg-gray-800"}`}
@@ -1030,18 +1071,11 @@ function Game({ user }) {
   return (
     <div className={`game-view ${tab === "cards" ? "game-view-cards" : ""}`}>
       {tab === "cards" ? (
-        <StudyCards
-          key={user.uid}
-          user={user}
-          mistakeIds={mistakeIds}
-          modePicker={modePicker}
-        />
+        <StudyCards key={user.uid} user={user} modePicker={modePicker} />
       ) : (
         <>
           <header className="study-toolbar mb-3">
-            <span className="text-sm text-gray-400">
-              {tab === "contrasts" ? "Contrastes" : "Mis errores"}
-            </span>
+            <span className="text-sm text-gray-400">Contrastes</span>
             <button
               type="button"
               onClick={() => setSettingsOpen(true)}
@@ -1059,15 +1093,6 @@ function Game({ user }) {
             {modePicker}
           </StudySheet>
           {tab === "contrasts" && <ContrastPractice user={user} />}
-          {tab === "mistakes" && (
-            <MistakesNotebook
-              user={user}
-              onPractice={(ids) => {
-                setMistakeIds(ids);
-                setTab("cards");
-              }}
-            />
-          )}
         </>
       )}
     </div>

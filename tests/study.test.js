@@ -13,6 +13,7 @@ import {
   enrichWord,
   planVocabularyPatch,
 } from "../src/utils/vocabulary.js";
+import { orderStudyCards, smartWeight } from "../src/utils/studyQueue.js";
 import {
   lexicalKey,
   parseVocabularyBackup,
@@ -62,6 +63,31 @@ test("all study identities isolate bases, prefixes, directions, sources and unde
     studyId({ ...word, id: word.id + "_auf" }, "de-es", "me"),
     studyId(items[1], "de-es", "me"),
   );
+});
+test("review follows deck order while random rounds spread verb families", () => {
+  const family = expandVocabulary([word]);
+  const others = Array.from({ length: 3 }, (_, index) => ({
+    id: `noun-${index}`, type: "noun", german: `Wort${index}`, spanish: `Palabra ${index}`,
+  }));
+  const cards = [...family, ...others];
+  assert.deepEqual(orderStudyCards(cards, "review", "round", {}, "de-es", "me"), cards);
+  const first = orderStudyCards(cards, "random", "round", {}, "de-es", "me");
+  const again = orderStudyCards(cards, "random", "round", {}, "de-es", "me");
+  assert.deepEqual(first.map((item) => item.id), again.map((item) => item.id));
+  assert.deepEqual(new Set(first.map((item) => item.id)), new Set(cards.map((item) => item.id)));
+  for (let index = 1; index < first.length; index++) {
+    assert.notEqual(first[index].baseWordId || first[index].id,
+      first[index - 1].baseWordId || first[index - 1].id);
+  }
+});
+test("intelligent random gives failed and due words more weight without losing cards", () => {
+  const mastered = { correct: 10, incorrect: 0, schedule: { due: now + 86400000 } };
+  const failed = { correct: 1, incorrect: 3, schedule: { due: now - 1000 } };
+  assert.ok(smartWeight(failed, now) > smartWeight(mastered, now));
+  assert.ok(smartWeight({}, now) > smartWeight(mastered, now));
+  const cards = expandVocabulary([word]);
+  const ordered = orderStudyCards(cards, "smart", "round", {}, "de-es", "me", now);
+  assert.deepEqual(new Set(ordered.map((item) => item.id)), new Set(cards.map((item) => item.id)));
 });
 test("FSRS persists round-trippable state, distinguishes ratings and records ordered reviews", () => {
   const id = studyId(word, "de-es", "me");
