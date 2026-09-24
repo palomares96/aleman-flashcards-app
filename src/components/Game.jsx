@@ -12,8 +12,6 @@ import {
   localDay,
   germanAnswer,
   checkAnswer,
-  scheduleCard,
-  RATINGS,
   ERROR_LABELS,
 } from "../utils/study.js";
 import AudioButton from "./AudioButton.jsx";
@@ -387,6 +385,7 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
   const [flipped, setFlipped] = useState(false);
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState(null);
+  const [reviewed, setReviewed] = useState(null);
   const [errorType, setErrorType] = useState("meaning");
   const [error, setError] = useState("");
   const [session, setSession] = useState({ total: 0, correct: 0 });
@@ -441,6 +440,7 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
     setFlipped(false);
     setAnswer("");
     setFeedback(null);
+    setReviewed(null);
     setDetailsOpen(false);
     setReasonOpen(false);
     setClock(Date.now());
@@ -504,20 +504,7 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
       );
     queue.sort((a, b) => order(a) - order(b));
   }
-  const word = queue[0];
-  const interval = (rating) => {
-    const due = scheduleCard(
-      study.progress[studyId(word, activeDirection, ownerUid)],
-      rating,
-      Date.now(),
-    ).schedule.due;
-    const minutes = Math.max(1, Math.round((due - Date.now()) / 60000));
-    return minutes < 60
-      ? `${minutes} min`
-      : minutes < 1440
-        ? `${Math.round(minutes / 60)} h`
-        : `${Math.round(minutes / 1440)} días`;
-  };
+  const word = reviewed?.word || queue[0];
   const categories = [
     ...new Map(
       source
@@ -537,7 +524,7 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
     setFlipped(true);
   };
   const rate = (rating, reason = errorType) => {
-    if (!word || !flipped || busy) return;
+    if (!word || !flipped || busy || reviewed) return;
     setBusy(true);
     setError("");
     try {
@@ -562,18 +549,25 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
         total: previous.total + 1,
         correct: previous.correct + Number(rating > 1),
       }));
-      setDone((previous) => [...previous, cardId]);
-      setFlipped(false);
-      setAnswer("");
-      setFeedback(null);
+      setReviewed({ word, cardId, rating, reason });
       setDetailsOpen(false);
       setReasonOpen(false);
-      setErrorType("meaning");
     } catch (failure) {
       setError(`No se guardó el repaso. ${failure.message}`);
     } finally {
       setBusy(false);
     }
+  };
+  const nextCard = () => {
+    if (!reviewed) return;
+    setDone((previous) => [...previous, reviewed.cardId]);
+    setReviewed(null);
+    setFlipped(false);
+    setAnswer("");
+    setFeedback(null);
+    setErrorType("meaning");
+    setDetailsOpen(false);
+    setClock(Date.now());
   };
   const select = (label, value, change, options) => (
     <label className="text-sm text-gray-300">
@@ -798,6 +792,7 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
                 flipped={flipped}
                 direction={practice === "listen" ? "es-de" : direction}
                 onClick={() => {
+                  if (reviewed) return;
                   setFlipped(!flipped);
                   setFeedback(null);
                   setDetailsOpen(false);
@@ -849,48 +844,54 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
                       feedback?.correct ? "text-green-300" : "text-gray-300"
                     }
                   >
-                    {feedback
-                      ? feedback.correct
-                        ? "Correcto"
-                        : `Revisa: ${ERROR_LABELS[feedback.type] || "respuesta"}`
-                      : "¿Cómo te ha ido?"}
+                    {reviewed
+                      ? reviewed.rating === 1
+                        ? "Marcada para repasar"
+                        : "Respuesta guardada"
+                      : feedback
+                        ? feedback.correct
+                          ? "Correcto"
+                          : `Revisa: ${ERROR_LABELS[feedback.type] || "respuesta"}`
+                        : "¿Cómo te ha ido?"}
                   </p>
+                  {reviewed && (
+                    <button
+                      type="button"
+                      className="shrink-0 px-2 py-3 text-blue-300"
+                      onClick={() => setDetailsOpen(true)}
+                    >
+                      Ver detalle
+                    </button>
+                  )}
+                </div>
+                {reviewed ? (
                   <button
                     type="button"
-                    className="shrink-0 px-2 py-3 text-blue-300"
-                    onClick={() => setDetailsOpen(true)}
+                    onClick={nextCard}
+                    className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold"
                   >
-                    Ver detalle
+                    Siguiente ficha
                   </button>
-                </div>
-                <div
-                  className={`study-ratings grid gap-2 ${practice === "cards" ? "grid-cols-2" : "grid-cols-4"}`}
-                >
-                  {(practice === "cards"
-                    ? [
-                        [1, "No me la sé"],
-                        [3, "Me la sé"],
-                      ]
-                    : RATINGS
-                  ).map(([rating, label]) => (
-                    <button
-                      key={rating}
-                      aria-label={label}
-                      disabled={busy}
-                      onClick={() =>
-                        rating === 1 ? setReasonOpen(true) : rate(rating)
-                      }
-                      className={`px-1 py-3 rounded-xl text-sm font-semibold ${rating === 1 ? "bg-red-900/70" : "bg-teal-900/70"}`}
-                    >
-                      {label}
-                      {practice !== "cards" && (
-                        <small className="block text-xs font-normal opacity-70">
-                          {interval(rating)}
-                        </small>
-                      )}
-                    </button>
-                  ))}
-                </div>
+                ) : (
+                  <div className="study-ratings grid grid-cols-2 gap-2">
+                    {[
+                      [1, "No me la sé"],
+                      [3, "Me la sé"],
+                    ].map(([rating, label]) => (
+                      <button
+                        key={rating}
+                        aria-label={label}
+                        disabled={busy}
+                        onClick={() =>
+                          rating === 1 ? setReasonOpen(true) : rate(rating)
+                        }
+                        className={`px-1 py-3 rounded-xl text-sm font-semibold ${rating === 1 ? "bg-red-900/70" : "bg-teal-900/70"}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <StudySheet
                   open={reasonOpen}
                   onClose={() => setReasonOpen(false)}
@@ -898,7 +899,7 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
                   closeLabel="Volver"
                 >
                   <p className="text-sm text-gray-400 mb-4">
-                    Opcional. Toca un motivo para seguir.
+                    Opcional. Toca un motivo para guardar la respuesta.
                   </p>
                   {error && (
                     <p role="alert" className="mb-3 text-sm text-red-300">
@@ -926,7 +927,7 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
                     onClick={() => rate(1, feedback?.type || "unspecified")}
                     className="mt-4 w-full rounded-xl bg-blue-600 px-3 py-3 font-semibold"
                   >
-                    Siguiente sin elegir motivo
+                    Continuar sin motivo
                   </button>
                 </StudySheet>
                 <StudySheet
@@ -934,6 +935,20 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
                   onClose={() => setDetailsOpen(false)}
                   title="Sobre esta respuesta"
                 >
+                  <p className="mb-3 text-sm text-gray-300">
+                    Solución:{" "}
+                    <strong>
+                      {practice === "listen" || direction === "es-de"
+                        ? germanAnswer(word)
+                        : word.spanish}
+                    </strong>
+                  </p>
+                  {reviewed?.rating === 1 &&
+                    reviewed.reason !== "unspecified" && (
+                      <p className="mb-3 text-sm text-gray-400">
+                        Motivo: {ERROR_LABELS[reviewed.reason]}
+                      </p>
+                    )}
                   {feedback && (
                     <div role="status" className="space-y-2 mb-5">
                       <p
@@ -943,12 +958,9 @@ function StudyCards({ user, mistakeIds = null, modePicker }) {
                       >
                         {feedback.message}
                       </p>
-                      <p>
-                        Solución: <strong>{feedback.expected}</strong>
-                      </p>
-                      {!feedback.correct && (
+                      {!feedback.correct && reviewed?.rating === 3 && (
                         <p className="text-sm text-gray-400">
-                          Si tu alternativa es válida, puedes marcar «Bien».
+                          Si tu alternativa es válida, puedes marcar «Me la sé».
                           Añádela en la biblioteca para aceptarla en próximos
                           ejercicios.
                         </p>

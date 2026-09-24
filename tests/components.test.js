@@ -138,6 +138,8 @@ test('learning details stay out of the game until opened and do not flip the car
     await ui.act(async () => card.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
     assert.equal(card.getAttribute('aria-pressed'), 'true');
     assert.equal(document.querySelector('aside'), null);
+    assert.equal(button('Ver detalle'), undefined);
+    await click(button('Me la sé'));
     await click(button('Ver detalle'));
     assert.equal(document.querySelectorAll('aside li').length, 5);
     assert.match(document.querySelector('aside').textContent, /vorstellen/);
@@ -145,8 +147,7 @@ test('learning details stay out of the game until opened and do not flip the car
     await click(document.querySelector('aside'));
     assert.equal(card.getAttribute('aria-pressed'), 'true');
     await closeSheet();
-    await ui.act(async () => new Promise(resolve => setTimeout(resolve, 310)));
-    await click(card);
+    await click(button('Siguiente ficha'));
     assert.equal(document.querySelector('aside'), null);
   } finally { await unmount(); Math.random = random; }
 });
@@ -214,16 +215,20 @@ test('typed study requires reveal, classifies errors and persists the chosen dir
     await closeSheet();
     await setValue('input[aria-label="Tu respuesta"]', 'STELLEN');
     await ui.act(async () => document.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })));
+    assert.equal(button('Ver detalle'), undefined);
+    assert.ok(button('Me la sé'));
+    assert.ok(button('No me la sé'));
+    await click(button('No me la sé'));
+    await click(button('Continuar sin motivo'));
     await click(button('Ver detalle'));
     assert.match(container().textContent, /minúscula/);
     await closeSheet();
-    await click([...document.querySelectorAll('button')].find(button => button.getAttribute('aria-label') === 'Otra vez'));
-    await click(button('Siguiente sin elegir motivo'));
     const event = ui.state.writes.find(write => write.ref.path.includes('/reviewEvents/')).data;
     assert.equal(event.direction, 'es-de');
     assert.equal(event.errorType, 'capitalization');
     assert.equal(event.german, 'stellen');
     assert.equal(event.rating, 1);
+    await click(button('Siguiente ficha'));
     assert.equal(document.querySelector('aside'), null);
   } finally { await unmount(); }
 });
@@ -234,16 +239,20 @@ test('word cards offer two choices and knowing a card records success without as
     await click(button('Mostrar respuesta'));
     assert.ok(button('Me la sé'));
     assert.ok(button('No me la sé'));
+    assert.equal(button('Ver detalle'), undefined);
     assert.equal(button('Difícil'), undefined);
     assert.equal(button('Fácil'), undefined);
-    await click(button('Ver detalle'));
-    assert.equal(document.querySelector('[aria-label="Tipo de error"]'), null);
-    await closeSheet();
     await click(button('Me la sé'));
+    assert.ok(button('Ver detalle'));
+    await click(button('Ver detalle'));
+    assert.match(document.querySelector('dialog[open]').textContent, /Solución:/);
+    await closeSheet();
     const events = ui.state.writes.filter(write => write.ref.path.includes('/reviewEvents/'));
     assert.equal(events.length, 1);
     assert.equal(events[0].data.rating, 3);
     assert.equal(document.querySelector('dialog[open]'), null);
+    await click(button('Siguiente ficha'));
+    assert.equal(button('Ver detalle'), undefined);
   } finally { await unmount(); }
 });
 
@@ -262,9 +271,10 @@ test('not knowing a card asks for an optional one-tap reason and supports return
     assert.equal(events.length, 1);
     assert.equal(events[0].data.rating, 1);
     assert.equal(events[0].data.errorType, 'conjugation');
+    await click(button('Siguiente ficha'));
     await click(button('Mostrar respuesta'));
     await click(button('No me la sé'));
-    await click(button('Siguiente sin elegir motivo'));
+    await click(button('Continuar sin motivo'));
     events = ui.state.writes.filter(write => write.ref.path.includes('/reviewEvents/'));
     assert.equal(events.length, 2);
     assert.equal(events[1].data.errorType, 'unspecified');
@@ -286,6 +296,10 @@ test('dictation hides the answer and offers a clear unsupported-audio fallback',
     await click([...document.querySelectorAll('button')].find(button => button.textContent.includes('Escuchar alemán')));
     assert.match(container().textContent, /no ofrece lectura/);
     await click([...document.querySelectorAll('button')].find(button => button.textContent === 'Mostrar respuesta'));
+    assert.equal(button('Ver detalle'), undefined);
+    assert.ok(button('Me la sé'));
+    assert.ok(button('No me la sé'));
+    await click(button('Me la sé'));
     await click(button('Ver detalle'));
     assert.match(document.querySelector('aside').textContent, /Familia de stellen/);
   } finally { await unmount(); }
