@@ -22,6 +22,16 @@ import { orderStudyCards } from "../utils/studyQueue.js";
 import AudioButton from "./AudioButton.jsx";
 import ContrastPractice from "./ContrastPractice.jsx";
 
+const prepositionCases = new Map([
+  ["Akkusativ", { label: "Acusativo", colors: "from-rose-600 to-rose-800" }],
+  ["Dativ", { label: "Dativo", colors: "from-blue-600 to-blue-800" }],
+  ["Genitiv", { label: "Genitivo", colors: "from-violet-600 to-violet-800" }],
+  [
+    "Wechselpräposition",
+    { label: "Dativo o acusativo", colors: "from-teal-600 to-teal-800" },
+  ],
+]);
+
 // --- ICONOS ---
 const FilterIcon = () => (
   <svg
@@ -132,12 +142,14 @@ const CardFace = ({
     if (palabra.type === "noun" && palabra.attributes?.gender) {
       displayMain = `${articles[palabra.attributes.gender]} ${mainText.charAt(0).toUpperCase() + mainText.slice(1)}`;
       typeInfo = `Sustantivo • ${genderLabels[palabra.attributes.gender] || ""}`;
+    } else if (palabra.type === "preposition") {
+      const grammaticalCase = palabra.attributes?.case;
+      typeInfo = `Preposición · ${prepositionCases.get(grammaticalCase)?.label || grammaticalCase || "Caso sin indicar"}`;
     } else {
       typeInfo =
         {
           verb: "Verbo",
           adjective: "Adjetivo",
-          preposition: "Preposición",
           other: "Palabra",
         }[palabra.type] || "Palabra";
     }
@@ -305,6 +317,10 @@ const ActiveCard = ({ palabra, flipped, direction, onClick, isSwipingOut }) => {
     baseGradient = "bg-gradient-to-br from-orange-500 to-orange-700";
   } else if (palabra.type === "adjective") {
     baseGradient = "bg-gradient-to-br from-purple-500 to-purple-700";
+  } else if (palabra.type === "preposition") {
+    const grammaticalCase = prepositionCases.get(palabra.attributes?.case);
+    if (grammaticalCase)
+      baseGradient = `bg-gradient-to-br ${grammaticalCase.colors}`;
   }
 
   // --- ANIMACIONES DE DESLIZAMIENTO ---
@@ -355,15 +371,14 @@ const ActiveCard = ({ palabra, flipped, direction, onClick, isSwipingOut }) => {
 // =================================================================================
 // LÓGICA DEL JUEGO (GAME)
 // =================================================================================
-function StudyCards({ user, modePicker }) {
+function StudyCards({ user, prepositionsOnly }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [reasonOpen, setReasonOpen] = useState(false);
+  const optionsKey = `study-options:${user.uid}${prepositionsOnly ? ":prepositions" : ""}`;
   const [saved] = useState(() => {
     try {
-      return (
-        JSON.parse(localStorage.getItem(`study-options:${user.uid}`)) || {}
-      );
+      return JSON.parse(localStorage.getItem(optionsKey)) || {};
     } catch {
       return {};
     }
@@ -394,13 +409,13 @@ function StudyCards({ user, modePicker }) {
   useEffect(() => {
     try {
       localStorage.setItem(
-        `study-options:${user.uid}`,
+        optionsKey,
         JSON.stringify({ direction, practice, mode, filters }),
       );
     } catch {
       /* Practice remains usable when browser storage is unavailable. */
     }
-  }, [user.uid, direction, practice, mode, filters]);
+  }, [optionsKey, direction, practice, mode, filters]);
   const [friend, setFriend] = useState("");
   const [friends, setFriends] = useState([]);
   const [sharedWords, setSharedWords] = useState([]);
@@ -476,7 +491,10 @@ function StudyCards({ user, modePicker }) {
     setDetailsOpen(false);
     setReasonOpen(false);
   }, [direction, practice, mode, filters, friend]);
-  const source = friend ? sharedWords : study.items;
+  const deck = friend ? sharedWords : study.items;
+  const source = prepositionsOnly
+    ? deck.filter((word) => word.type === "preposition")
+    : deck;
   const filtered = source.filter((word) => {
     if (filters.type && word.type !== filters.type) return false;
     if (filters.categoryId && word.categoryId !== filters.categoryId)
@@ -544,7 +562,9 @@ function StudyCards({ user, modePicker }) {
         errorType: reason,
         answer,
         mode: practice,
-        filters,
+        filters: prepositionsOnly
+          ? { ...filters, type: "preposition" }
+          : filters,
         sessionId: sessionId.current,
         sessionComplete: queue.length === 1,
         isNew: !study.progress[cardId]?.schedule,
@@ -661,7 +681,6 @@ function StudyCards({ user, modePicker }) {
         onClose={() => setSettingsOpen(false)}
         title="Tu práctica"
       >
-        {modePicker}
         <div className="my-5">
           {select("Dirección", direction, setDirection, [
             ["de-es", "Alemán → Español"],
@@ -688,19 +707,20 @@ function StudyCards({ user, modePicker }) {
         <section className="mt-5 border-t border-white/10 pt-4">
           <h3 className="text-sm font-semibold">Mazo y filtros</h3>
           <div className="grid grid-cols-2 gap-3 mt-3">
-            {select(
-              "Tipo",
-              filters.type,
-              (value) => setFilters({ ...filters, type: value }),
-              [
-                ["", "Todos"],
-                ["noun", "Sustantivos"],
-                ["verb", "Verbos"],
-                ["adjective", "Adjetivos"],
-                ["preposition", "Preposiciones"],
-                ["other", "Otros"],
-              ],
-            )}
+            {!prepositionsOnly &&
+              select(
+                "Tipo",
+                filters.type,
+                (value) => setFilters({ ...filters, type: value }),
+                [
+                  ["", "Todos"],
+                  ["noun", "Sustantivos"],
+                  ["verb", "Verbos"],
+                  ["adjective", "Adjetivos"],
+                  ["preposition", "Preposiciones"],
+                  ["other", "Otros"],
+                ],
+              )}
             {select(
               "Categoría",
               filters.categoryId,
@@ -728,27 +748,28 @@ function StudyCards({ user, modePicker }) {
                 ["struggling", "Me cuestan"],
               ],
             )}
-            {select(
-              "Artículo",
-              filters.gender,
-              (value) => setFilters({ ...filters, gender: value }),
-              [
-                ["", "Todos"],
-                ["m", "der"],
-                ["f", "die"],
-                ["n", "das"],
-              ],
-            )}
+            {!prepositionsOnly &&
+              select(
+                "Artículo",
+                filters.gender,
+                (value) => setFilters({ ...filters, gender: value }),
+                [
+                  ["", "Todos"],
+                  ["m", "der"],
+                  ["f", "die"],
+                  ["n", "das"],
+                ],
+              )}
             {select(
               "Caso",
               filters.case,
               (value) => setFilters({ ...filters, case: value }),
               [
                 ["", "Todos"],
-                ["Akkusativ", "Acusativo"],
-                ["Dativ", "Dativo"],
-                ["Genitiv", "Genitivo"],
-                ["Wechselpräposition", "Variable"],
+                ...Array.from(prepositionCases, ([value, { label }]) => [
+                  value,
+                  label,
+                ]),
               ],
             )}
             {select("Mazo", friend, setFriend, [
@@ -1005,7 +1026,9 @@ function StudyCards({ user, modePicker }) {
               ? session.incorrect.length
                 ? `Ronda ${round} completada`
                 : "¡Repaso completo!"
-              : "Todavía no hay palabras"}
+              : prepositionsOnly
+                ? "No hay preposiciones en esta selección"
+                : "Todavía no hay palabras"}
           </h2>
           {session.total ? (
             <>
@@ -1036,7 +1059,11 @@ function StudyCards({ user, modePicker }) {
             <p className="text-gray-300">
               {source.length
                 ? "Prueba a quitar algún filtro en Ajustes."
-                : "Añade vocabulario desde Biblioteca para empezar."}
+                : prepositionsOnly
+                  ? friend
+                    ? "Elige otro mazo en Ajustes."
+                    : "Añade una preposición en Biblioteca para empezar."
+                  : "Añade vocabulario desde Biblioteca para empezar."}
             </p>
           )}
         </section>
@@ -1046,54 +1073,38 @@ function StudyCards({ user, modePicker }) {
 }
 function Game({ user }) {
   const [tab, setTab] = useState("cards");
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const modePicker = (
-    <nav aria-label="Práctica" className="grid grid-cols-2 gap-2">
-      {[
-        ["cards", "Repasar"],
-        ["contrasts", "Contrastes"],
-      ].map(([value, label]) => (
-        <button
-          key={value}
-          type="button"
-          aria-pressed={tab === value}
-          onClick={() => {
-            setTab(value);
-            setSettingsOpen(false);
-          }}
-          className={`text-sm py-3 px-2 rounded-xl ${tab === value ? "bg-blue-600" : "bg-gray-800"}`}
-        >
-          {label}
-        </button>
-      ))}
-    </nav>
-  );
   return (
-    <div className={`game-view ${tab === "cards" ? "game-view-cards" : ""}`}>
-      {tab === "cards" ? (
-        <StudyCards key={user.uid} user={user} modePicker={modePicker} />
-      ) : (
-        <>
-          <header className="study-toolbar mb-3">
-            <span className="text-sm text-gray-400">Contrastes</span>
-            <button
-              type="button"
-              onClick={() => setSettingsOpen(true)}
-              className="rounded-xl bg-white/5 px-3 py-3 text-sm"
-              aria-label="Ajustes de práctica"
-            >
-              Cambiar práctica
-            </button>
-          </header>
-          <StudySheet
-            open={settingsOpen}
-            onClose={() => setSettingsOpen(false)}
-            title="Tu práctica"
+    <div
+      className={`game-view ${tab === "contrasts" ? "" : "game-view-cards"}`}
+    >
+      <nav
+        aria-label="Práctica"
+        className="grid shrink-0 grid-cols-3 gap-1 mb-2"
+      >
+        {[
+          ["cards", "Repasar"],
+          ["prepositions", "Preposiciones"],
+          ["contrasts", "Contrastes"],
+        ].map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={tab === value}
+            onClick={() => setTab(value)}
+            className={`text-sm py-3 px-1 rounded-xl ${tab === value ? "bg-blue-600" : "bg-gray-800"}`}
           >
-            {modePicker}
-          </StudySheet>
-          {tab === "contrasts" && <ContrastPractice user={user} />}
-        </>
+            {label}
+          </button>
+        ))}
+      </nav>
+      {tab === "contrasts" ? (
+        <ContrastPractice user={user} />
+      ) : (
+        <StudyCards
+          key={`${user.uid}:${tab}`}
+          user={user}
+          prepositionsOnly={tab === "prepositions"}
+        />
       )}
     </div>
   );

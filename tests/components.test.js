@@ -350,8 +350,7 @@ test('dictation hides the answer and offers a clear unsupported-audio fallback',
 test('contrast exercises explain a wrong choice and schedule one corrective repeat', async () => {
   const unmount = await mount(ui.Game);
   try {
-    await settings();
-    await click([...document.querySelectorAll('button')].find(button => button.textContent === 'Contrastes'));
+    await click(button('Contrastes'));
     await click([...document.querySelectorAll('button')].find(button => button.textContent === 'lege'));
     assert.match(container().textContent, /posición vertical/);
     assert.equal(ui.state.writes.find(write => write.ref.path.includes('/contrastAttempts/')).data.correct, false);
@@ -372,9 +371,7 @@ test('practice preferences survive returning from another mode and settings do n
     await settings();
     await closeSheet();
     assert.equal(document.querySelector('[aria-label="Girar tarjeta"]').getAttribute('aria-pressed'), 'true');
-    await settings();
     await click(button('Contrastes'));
-    await settings();
     await click(button('Repasar'));
     assert.ok(document.querySelector('[aria-label="Tu respuesta"]'));
     await settings();
@@ -383,6 +380,72 @@ test('practice preferences survive returning from another mode and settings do n
     await setValue('select[aria-label="Tipo"]', 'noun');
     await click(button('Quitar filtros y usar mi mazo'));
     assert.equal(document.querySelector('select[aria-label="Tipo"]').value, '');
+  } finally { await unmount(); }
+});
+
+test('prepositions have a direct practice mode, filter by case, and keep German case cues off the Spanish face', async () => {
+  const examples = [
+    ['für', 'para', 'Akkusativ', 'Acusativo', 'rose'],
+    ['mit', 'con', 'Dativ', 'Dativo', 'blue'],
+    ['trotz', 'a pesar de', 'Genitiv', 'Genitivo', 'violet'],
+    ['unter', 'debajo de', 'Wechselpräposition', 'Dativo o acusativo', 'teal'],
+  ];
+  const rows = examples.map(([german, spanish, grammaticalCase]) => ({
+    id: german, type: 'preposition', german, spanish, attributes: { case: grammaticalCase },
+  }));
+  const unmount = await mount(ui.Game, [baseWord(), ...rows]);
+  const visibleFace = () => document.querySelector('.study-card-face[aria-hidden="false"]');
+  try {
+    await settings();
+    await setValue('select[aria-label="Tipo"]', 'noun');
+    await setValue('select[aria-label="Artículo"]', 'm');
+    await closeSheet();
+    await click(button('Preposiciones'));
+    assert.match(container().textContent, /4 pendientes/);
+    for (const [german, spanish, grammaticalCase, label, color] of examples) {
+      await settings();
+      await setValue('select[aria-label="Caso"]', grammaticalCase);
+      await closeSheet();
+      assert.match(container().textContent, /1 pendientes/);
+      assert.equal(visibleFace().querySelector('h2').textContent, german);
+      assert.ok(visibleFace().textContent.includes('Preposición · ' + label));
+      assert.ok(visibleFace().classList.contains('from-' + color + '-600'));
+      await click(button('Mostrar respuesta'));
+      assert.equal(visibleFace().querySelector('h2').textContent, spanish);
+      assert.ok(visibleFace().classList.contains('from-gray-700'));
+      assert.doesNotMatch(visibleFace().textContent, /Preposición/);
+    }
+    await settings();
+    await setValue('select[aria-label="Dirección"]', 'es-de');
+    await closeSheet();
+    assert.ok(visibleFace().classList.contains('from-gray-700'));
+    await click(button('Mostrar respuesta'));
+    assert.ok(visibleFace().classList.contains('from-teal-600'));
+    await click(button('Me la sé'));
+    const review = ui.state.writes.find(write => write.ref.path.includes('/reviewEvents/')).data;
+    assert.equal(review.wordId, 'unter');
+    assert.equal(review.filters.type, 'preposition');
+    await click(button('Repasar'));
+    await settings();
+    assert.equal(document.querySelector('select[aria-label="Tipo"]').value, 'noun');
+    assert.equal(document.querySelector('select[aria-label="Artículo"]').value, 'm');
+  } finally { await unmount(); }
+});
+
+test('prepositions without a recorded case remain playable and filtered decks can be reset', async () => {
+  const unmount = await mount(ui.Game, [baseWord(), { id: 'zu', german: 'zu', spanish: 'a', type: 'preposition' }]);
+  try {
+    await click(button('Preposiciones'));
+    assert.match(container().textContent, /Caso sin indicar/);
+    await settings();
+    await setValue('select[aria-label="Caso"]', 'Dativ');
+    await closeSheet();
+    assert.match(container().textContent, /No hay preposiciones/);
+    await settings();
+    await click(button('Quitar filtros y usar mi mazo'));
+    await closeSheet();
+    assert.match(container().textContent, /Caso sin indicar/);
+    assert.doesNotMatch(container().textContent, /stellen/i);
   } finally { await unmount(); }
 });
 
