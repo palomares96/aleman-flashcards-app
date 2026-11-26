@@ -28,7 +28,7 @@ export const documentId = () => '__name__';
 export const increment = value => value;
 export const serverTimestamp = () => 'test-time';
 export const getDocs = async ref => {
-  let rows = ref.path === 'categories' ? [{ id: 'other', name_es: 'Otros' }]
+  let rows = ref.path === 'categories' ? [{ id: 'other', name_es: 'Otros' }, { id: 'opaque23', name_es: 'Viajes' }]
     : ref.path.endsWith('/words') ? [...state.rows] : [];
   if (ref.constraints?.some(item => item.where)) rows = [];
   const after = ref.constraints?.find(item => item.after)?.after;
@@ -167,6 +167,82 @@ test('adding a word persists normalized casing and learning fields', async () =>
     const saved = ui.state.writes.at(-1).data;
     assert.equal(saved.german, 'anrufen');
     assert.equal(saved.learning.usageEs, 'Llamar por teléfono.');
+    assert.deepEqual([saved.categoryId, saved.category], ['other', 'Otros']);
+  } finally { await unmount(); }
+});
+
+test('registration lists categories immediately, saves a selection, and offers a reusable new category', async () => {
+  const unmount = await mount(ui.WordForm, []);
+  const submit = () => ui.act(async () => document.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })));
+  try {
+    const field = document.querySelector('select[name="category"]');
+    assert.equal(field.value, '');
+    assert.ok([...field.options].some(option => option.text === 'Viajes'));
+    await setValue('input[name="german"]', 'Fahrkarte');
+    await setValue('input[name="spanish"]', 'billete');
+    await setValue('select[name="category"]', 'category:Viajes');
+    await submit();
+    assert.deepEqual([ui.state.writes.at(-1).data.categoryId, ui.state.writes.at(-1).data.category], ['opaque23', 'Viajes']);
+
+    await setValue('input[name="german"]', 'Bahnhof');
+    await setValue('input[name="spanish"]', 'estación');
+    await setValue('select[name="category"]', 'new');
+    await setValue('input[name="newCategory"]', 'Trenes');
+    ui.state.beforeTransaction = () => { throw new Error('category unavailable'); };
+    await submit();
+    assert.equal(ui.state.writes.length, 1);
+    assert.equal(document.querySelector('input[name="newCategory"]').value, 'Trenes');
+    assert.match(container().textContent, /No se pudo guardar la categoría/);
+    ui.state.beforeTransaction = null;
+    await submit();
+    const saved = ui.state.writes.at(-1).data;
+    assert.equal(saved.category, 'Trenes');
+    assert.equal(ui.state.records['categories/' + saved.categoryId].name_es, 'Trenes');
+    assert.ok([...field.options].some(option => option.text === 'Trenes'));
+  } finally { ui.state.beforeTransaction = null; await unmount(); }
+});
+
+test('review resolves registry IDs and legacy labels to one filter and separates unclassified cards', async () => {
+  const sample = [
+    { id: 'a', german: 'Bahn', categoryId: 'opaque23' },
+    { id: 'b', german: 'Reise', categoryName: 'viajes' },
+    { id: 'c', german: 'Brot', categoryId: 'other' },
+    { id: 'd', german: 'Glas', categoryId: 'deleted-id' },
+  ].map(word => ({ ...word, type: 'noun', spanish: word.german, attributes: { gender: 'f' } }));
+  const unmount = await mount(ui.Game, sample);
+  try {
+    await settings();
+    const selector = 'select[aria-label="Categoría"]';
+    assert.deepEqual([...document.querySelector(selector).options].map(option => option.text), ['Todas', 'Otros', 'Viajes', 'Sin categoría']);
+    await setValue(selector, 'opaque23'); await closeSheet();
+    assert.match(container().textContent, /2 pendientes/);
+    await settings(); await setValue(selector, 'missing:'); await closeSheet();
+    assert.match(container().textContent, /1 pendientes/);
+    assert.match(container().textContent, /Glas/);
+  } finally { await unmount(); }
+});
+
+test('editing a legacy category by name preserves the sense and resolves its registry ID', async () => {
+  const unmount = await mount(ui.VocabularyManager, [{ ...baseWord(), categoryId: '', categoryName: 'Viajes' }]);
+  try {
+    await click([...document.querySelectorAll('span')].find(element => element.textContent.trim() === 'stellen'));
+    assert.equal(document.querySelector('select[name="category"]').selectedOptions[0].text, 'Viajes');
+    await ui.act(async () => document.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })));
+    assert.deepEqual([ui.state.writes.at(-1).data.categoryId, ui.state.writes.at(-1).data.category], ['opaque23', 'Viajes']);
+  } finally { await unmount(); }
+});
+
+test('sentence practice uses the same category for older words with just a name', async () => {
+  const unmount = await mount(ui.SentenceMode, [
+    { id: 'rail', german: 'Zug', spanish: 'tren', type: 'noun', category: 'viajes' },
+    { id: 'food', german: 'Brot', spanish: 'pan', type: 'noun', categoryId: 'other' },
+  ]);
+  try {
+    await click(button('Ajustes de frases'));
+    await setValue('select[aria-label="Categoría"]', 'opaque23');
+    await click(button('Guardar Cambios'));
+    await click([...document.querySelectorAll('button')].find(element => element.textContent.includes('Generar')));
+    assert.deepEqual(ui.state.aiCalls[0].data.words.map(word => word.term), ['Zug']);
   } finally { await unmount(); }
 });
 

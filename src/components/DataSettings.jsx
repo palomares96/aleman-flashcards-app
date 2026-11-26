@@ -15,6 +15,7 @@ import {
 } from "../utils/transfer.js";
 import { importStudyBackup } from "../services/importVocabulary.js";
 import { readCollection } from "../services/repository.js";
+import { categoryIndex } from "../utils/categories.js";
 export default function DataSettings({ user, userProfile, onSharingChange }) {
   const study = useStudyData(user.uid);
   const [offline, setOffline] = useState(() => offlineEnabled(user.uid)),
@@ -55,6 +56,7 @@ export default function DataSettings({ user, userProfile, onSharingChange }) {
   };
   const exportJSON = () =>
     run(async () => {
+      const categoryNames = categoryIndex(study.categories, study.words);
       const [history, contrasts, examples, sentences, legacy, personal] =
         await Promise.all(
           [
@@ -73,7 +75,10 @@ export default function DataSettings({ user, userProfile, onSharingChange }) {
             format: "aleman-vocabulary",
             version: 1,
             exportedAt: new Date().toISOString(),
-            words: study.words.map(word => ({ ...portableWord(word), id: word.id })),
+            words: study.words.map(word => {
+              const category = categoryNames.forWord(word);
+              return { ...portableWord(word), ...(category && { category: category.name }), id: word.id };
+            }),
             customContrasts: personal,
             studyProgress: study.progress,
             studyDays: study.daily,

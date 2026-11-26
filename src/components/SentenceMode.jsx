@@ -1,10 +1,10 @@
 import { useStudyData } from '../hooks/useStudyData.js';
 import { studyId, progressStats } from '../utils/study.js';
-import { readCollection } from '../services/repository.js';
+import { categoryIndex } from '../utils/categories.js';
 import SavedExamples from './SavedExamples.jsx';
 // src/components/SentenceMode.jsx
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { db } from '../firebase.js';
 import { collection, addDoc, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { aiService } from '../services/aiService';
@@ -81,7 +81,7 @@ function SentenceMode({ user, userProfile }) {
     const [context, setContext] = useState('Vida cotidiana');
     const [provider, setProvider] = useState('');
     const [savedVersion, setSavedVersion] = useState(0);
-    const [categories, setCategories] = useState([]);
+    const categories = useMemo(() => categoryIndex(study.categories, study.items), [study.categories, study.items]);
     const [direction, setDirection] = useState('de-es');
     const allWords = useMemo(() => study.items.map(word => ({ ...word, progress: progressStats(study.progress[studyId(word, direction, user.uid)]) })), [study.items, study.progress, direction, user.uid]);
     const [wordCounts, setWordCounts] = useState({ noun: 1, verb: 1, adjective: 1, preposition: 0, other: 0 });
@@ -133,12 +133,6 @@ function SentenceMode({ user, userProfile }) {
         setIsConfigOpen(true);
     };
 
-    useEffect(() => {
-        let active = true;
-        readCollection('categories').then(rows => { if (active) setCategories(rows); }).catch(() => { if (active) setError('No se pudieron cargar las categorías.'); });
-        return () => { active = false; };
-    }, []);
-
     const generateSentence = async () => {
         if (loading || evaluating) return;
         if (Object.values(wordCounts).reduce((sum, count) => sum + count, 0) > 6) { setError('Selecciona como máximo 6 palabras en los ajustes.'); return; }
@@ -151,7 +145,7 @@ function SentenceMode({ user, userProfile }) {
         setUnsavedAttempt(null);
 
         let pool = allWords.filter(w => {
-            if (filters.categoryId && w.categoryId !== filters.categoryId) return false;
+            if (!categories.matches(w, filters.categoryId)) return false;
             if (filters.difficulty && w.difficulty !== parseInt(filters.difficulty)) return false;
             if (filters.performance === 'new' && w.progress.totalPlays >= 3) return false;
             return true;
@@ -330,7 +324,7 @@ function SentenceMode({ user, userProfile }) {
                         <span className="px-2 py-0.5 text-[10px] font-bold bg-gray-800 text-gray-500 rounded-full border border-gray-700 uppercase tracking-wider">Free Plan</span>
                     )}
                 </div>
-                <button disabled={loading || evaluating || !!unsavedAttempt} onClick={openConfig} className={`p-2 rounded-lg transition-colors ${isConfigOpen ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-700'}`}><SettingsIcon /></button>
+                <button aria-label="Ajustes de frases" disabled={loading || evaluating || !!unsavedAttempt} onClick={openConfig} className={`p-2 rounded-lg transition-colors ${isConfigOpen ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-700'}`}><SettingsIcon /></button>
             </div>
 
             {isConfigOpen && pendingSettings && (
@@ -345,7 +339,7 @@ function SentenceMode({ user, userProfile }) {
                             </div>
                             <div className="space-y-3">
                                 <select value={pendingSettings.filters.difficulty} onChange={e => setPendingSettings(p => ({ ...p, filters: { ...p.filters, difficulty: e.target.value } }))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300"><option value="">Cualquier Nivel</option>{[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>Nivel {n}</option>)}</select>
-                                <select value={pendingSettings.filters.categoryId} onChange={e => setPendingSettings(p => ({ ...p, filters: { ...p.filters, categoryId: e.target.value } }))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300"><option value="">Cualquier Categoría</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name_es}</option>)}</select>
+                                <select aria-label="Categoría" value={categories.filterId(pendingSettings.filters.categoryId)} onChange={e => setPendingSettings(p => ({ ...p, filters: { ...p.filters, categoryId: e.target.value } }))} className="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300"><option value="">Cualquier categoría</option>{categories.filters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
                             </div>
                         </div>
                         {/* --- COLUMNA GRAMÁTICA --- */}
