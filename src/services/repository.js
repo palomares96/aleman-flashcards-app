@@ -29,5 +29,10 @@ export async function readCollection(path) {
   } while (cursor);
   return rows;
 }
-export const notifyVocabularyChanged = () =>
+// The library can change while no study screen is mounted to hear the event.
+let vocabularyRevision = 0;
+export const getVocabularyRevision = () => vocabularyRevision;
+export const notifyVocabularyChanged = () => {
+  vocabularyRevision++;
   window.dispatchEvent(new Event("vocabulary-changed"));
+};

@@ -48,7 +48,7 @@ export const runTransaction = async (db, callback) => {
   if (state.beforeTransaction) { state.beforeTransaction(); state.beforeTransaction = null; }
   return callback({
     set: (ref, data) => { state.records[ref.path] = structuredClone(data); state.writes.push({ ref, data }); },
-    get: async ref => { const row = ref.path.includes('/words/') ? state.rows.find(row => row.id === ref.id) : state.records[ref.path]; return { exists: () => !!row, data: () => structuredClone(row) }; },
+    get: async ref => { const row = (ref.path.includes('/words/') && state.rows.find(row => row.id === ref.path.split('/').at(-1))) || state.records[ref.path]; return { exists: () => !!row, data: () => structuredClone(row) }; },
     update: (ref, patch) => {
       state.writes.push({ ref, data: patch });
       const row = ref.path.includes('/words/') ? state.rows.find(row => row.id === ref.id) : (state.records[ref.path] ||= {});
@@ -71,7 +71,9 @@ const built = await build({
     export { default as WordForm } from './src/components/WordForm.jsx';
     export { default as VocabularyManager } from './src/components/VocabularyManager.jsx';
     export { backfillOwnVocabulary } from './src/services/vocabularyMigration.js';
-    export { clearStudyMemory } from './src/services/studyStore.js';
+    export { clearStudyMemory, getStudyStore, loadStudy } from './src/services/studyStore.js';
+    export { notifyVocabularyChanged } from './src/services/repository.js';
+    export { importStudyBackup } from './src/services/importVocabulary.js';
     export { state, auth } from 'firebase/firestore';
   `, resolveDir: process.cwd(), loader: 'js' },
   bundle: true, format: 'esm', platform: 'browser', write: false,
@@ -422,6 +424,65 @@ test('contrast exercises explain a wrong choice and schedule one corrective repe
     await click([...document.querySelectorAll('button')].find(button => button.textContent === 'Siguiente'));
     assert.match(container().textContent, /2 \/ 4/);
   } finally { await unmount(); }
+});
+
+test('custom contrast accepts either marked form, shows its explanation and records each attempt once', async () => {
+  const rows = ['wechseln', 'austauschen', 'merken'].map(german => ({
+    id: german, german, spanish: german === 'merken' ? 'notar' : 'cambiar', type: 'verb', attributes: {},
+  }));
+  const unmount = await mount(ui.Game, rows);
+  try {
+    await click(button('Contrastes'));
+    await click(button('Crear contraste'));
+    await setValue('form textarea', 'Ich muss die Glühbirne ___.');
+    await click(button('+ Añadir tercera ficha'));
+    for (const [i, row] of rows.entries()) {
+      const option = `form fieldset fieldset:nth-of-type(${i + 1})`;
+      await setValue(option + ' select', row.id);
+      if (i < 2) await click(document.querySelector(option + ' input[type=checkbox]'));
+    }
+    const explanation = 'Ambos verbos expresan que se sustituye la bombilla por otra.';
+    await setValue('form label:has(textarea):last-of-type textarea', explanation);
+    await click(button('Guardar contraste'));
+    assert.doesNotMatch(container().textContent, /sustituye la bombilla/);
+    for (const form of ['wechseln', 'austauschen']) {
+      await click(button(form));
+      assert.match(container().textContent, /Correcto/);
+      assert.match(container().textContent, /sustituye la bombilla/);
+      await click(button('Siguiente'));
+      await click(button('Repetir sesión'));
+    }
+    const progress = Object.entries(ui.state.records).find(([key]) => key.includes('/contrastProgress/'))[1];
+    assert.equal(progress.attempts, 2);
+    assert.equal(progress.errors, 0);
+  } finally { await unmount(); }
+});
+
+test('returning to practice picks up a library edit made while the study screen was closed', async () => {
+  ui.clearStudyMemory('test');
+  ui.state.rows = [baseWord()];
+  await ui.loadStudy('test', true);
+  ui.state.rows = [...ui.state.rows, { id: 'expr', type: 'expression', german: 'Das war keine Absicht.', spanish: 'Ha sido sin querer' }];
+  ui.notifyVocabularyChanged();
+  await ui.loadStudy('test');
+  assert.equal(ui.getStudyStore('test').state.items.find(word => word.id === 'expr').german, 'Das war keine Absicht.');
+});
+
+test('restoring a backup retains legacy IDs and remaps contrasts to matching cards without overwriting study history', async () => {
+  const castle = { type: 'noun', german: 'Schloss', spanish: 'castillo', attributes: { gender: 'n' } };
+  const lock = { ...castle, spanish: 'cerradura' };
+  const progressPath = 'users/test/studyProgress/old';
+  ui.state.records = { [progressPath]: { correct: 8 } };
+  ui.state.rows = [{ ...castle, id: 'existing' }];
+  const exercise = { id: 'custom_' + crypto.randomUUID(), words: ['Schloss', 'Schloss'],
+    wordIds: ['palace', 'key'], options: ['castillo', 'cerradura'], answers: ['cerradura'],
+    sentence: 'Der Schlüssel steckt im ___.', explanation: 'El contexto es una cerradura.' };
+  const backup = { words: [{ ...castle, id: 'palace' }, { ...lock, id: 'key' }, { ...lock, id: 'second-key' }], customContrasts: [exercise] };
+  assert.deepEqual(await ui.importStudyBackup('test', backup), { imported: 2, skipped: 1, contrastsAdded: 1 });
+  assert.deepEqual(ui.state.records['users/test/customContrasts/' + exercise.id].wordIds, ['existing', 'key']);
+  for (const id of ['key', 'second-key']) assert.equal(ui.state.records['users/test/words/' + id].spanish, 'cerradura');
+  assert.deepEqual(await ui.importStudyBackup('test', backup), { imported: 0, skipped: 3, contrastsAdded: 0 });
+  assert.deepEqual(ui.state.records[progressPath], { correct: 8 });
 });
 
 test('practice preferences survive returning from another mode and settings do not discard a revealed answer', async () => {

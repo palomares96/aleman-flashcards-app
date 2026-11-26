@@ -13,6 +13,7 @@ const own = (object, key) =>
 // Normalize dictionary lemmas, not sentences: preserve nouns in phrases such as
 // "Rad fahren", proper names and the formal pronoun "Sie".
 export function normalizeGerman(value, type) {
+  if (type === "expression") return typeof value === "string" ? value : "";
   const term = clean(value).replace(/\s+/g, " ");
   if (type === "noun")
     return term.charAt(0).toLocaleUpperCase("de-DE") + term.slice(1);
@@ -239,7 +240,7 @@ export function prepareWordForSave(word) {
   const result = enrichWord(word);
   result.spanish = clean(word.spanish);
   result.schemaVersion = Math.max(3, Number(word.schemaVersion) || 0);
-  if (!result.german || !result.spanish)
+  if (!result.german.trim() || !result.spanish)
     throw new Error("Escribe la palabra en alemán y su traducción.");
   if (result.learning) result.learning = normalizeLearning(result.learning);
   return result;

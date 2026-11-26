@@ -4,7 +4,6 @@ import {
   composeSeparableVerb,
   enrichWord,
   expandVocabulary,
-  normalizeGerman,
   normalizePrefixes,
 } from "../utils/vocabulary.js";
 import React, { useState, useEffect, useRef } from "react";
@@ -15,6 +14,7 @@ import {
   studyId,
   progressStats,
   germanAnswer,
+  studyQuestion,
   checkAnswer,
   ERROR_LABELS,
 } from "../utils/study.js";
@@ -117,24 +117,21 @@ const RotateIcon = () => (
 // =================================================================================
 // COMPONENTE VISUAL: CARA DE LA TARJETA
 // =================================================================================
-const CardFace = ({ palabra, isFront, direction, baseGradientClasses }) => {
+const CardFace = ({ palabra, isFront, direction, baseGradientClasses, library }) => {
   const isGermanSide =
     (isFront && direction === "de-es") || (!isFront && direction === "es-de");
-  const mainText = isGermanSide
-    ? normalizeGerman(palabra.german, palabra.type)
-    : palabra.spanish;
+  const question = studyQuestion(palabra, direction, library);
+  const displayMain = isFront ? question.text : isGermanSide ? germanAnswer(palabra) : palabra.spanish;
+  const context = isFront ? question.context : !isGermanSide && palabra.learning?.hintEs;
   const langLabel = isGermanSide ? "ALEMÁN" : "ESPAÑOL";
 
   // Diccionarios para visualización
-  const articles = { m: "der", f: "die", n: "das" };
   const genderLabels = { m: "Masculino", f: "Femenino", n: "Neutral" };
 
-  let displayMain = mainText;
   let typeInfo = "";
 
   if (isGermanSide) {
     if (palabra.type === "noun" && palabra.attributes?.gender) {
-      displayMain = `${articles[palabra.attributes.gender]} ${mainText.charAt(0).toUpperCase() + mainText.slice(1)}`;
       typeInfo = `Sustantivo • ${genderLabels[palabra.attributes.gender] || ""}`;
     } else if (palabra.type === "preposition") {
       const grammaticalCase = palabra.attributes?.case;
@@ -144,6 +141,7 @@ const CardFace = ({ palabra, isFront, direction, baseGradientClasses }) => {
         {
           verb: "Verbo",
           adjective: "Adjetivo",
+          expression: "Expresión",
           other: "Palabra",
         }[palabra.type] || "Palabra";
     }
@@ -206,12 +204,12 @@ const CardFace = ({ palabra, isFront, direction, baseGradientClasses }) => {
 
       {/* Contenido */}
       <div className="flex-1 flex flex-col justify-center z-10 my-3">
-        <h2 className="study-card-word font-bold text-white mb-2 tracking-tight leading-tight drop-shadow-md break-words">
+        <h2 className="study-card-word whitespace-pre-wrap font-bold text-white mb-2 tracking-tight leading-tight drop-shadow-md break-words">
           {displayMain}
         </h2>
-        {!isGermanSide && palabra.learning?.hintEs && (
+        {context && (
           <p className="text-sm text-white/80 mb-3">
-            {palabra.learning.hintEs}
+            {context}
           </p>
         )}
         {!(revealedVerb && !isGermanSide) && (
@@ -267,7 +265,7 @@ const CardFace = ({ palabra, isFront, direction, baseGradientClasses }) => {
   );
 };
 
-const ActiveCard = ({ palabra, flipped, direction, onClick }) => {
+const ActiveCard = ({ palabra, flipped, direction, onClick, library }) => {
   let baseGradient = "bg-gradient-to-br from-gray-700 to-gray-800";
 
   if (palabra.type === "noun") {
@@ -311,6 +309,7 @@ const ActiveCard = ({ palabra, flipped, direction, onClick }) => {
         isFront={!flipped}
         direction={direction}
         baseGradientClasses={baseGradient}
+        library={library}
       />
     </div>
   );
@@ -711,6 +710,7 @@ function StudyCards({ user, prepositionsOnly }) {
                   ["verb", "Verbos"],
                   ["adjective", "Adjetivos"],
                   ["preposition", "Preposiciones"],
+                  ["expression", "Expresiones"],
                   ["other", "Otros"],
                 ],
               )}
@@ -829,6 +829,7 @@ function StudyCards({ user, prepositionsOnly }) {
               <ActiveCard
                 key={cardId}
                 palabra={word}
+                library={deck}
                 flipped={flipped}
                 direction={practice === "listen" ? "es-de" : direction}
                 onClick={() => {

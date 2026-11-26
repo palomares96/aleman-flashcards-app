@@ -290,6 +290,17 @@ test("reviews are owner-only and events immutable; billing collections remain pr
   );
 });
 
+test("personal contrasts are private even when vocabulary sharing is enabled", async () => {
+  const path = "users/alice/customContrasts/sample";
+  await assertSucceeds(setDoc(doc(client("alice"), path), { sentence: "Ich ___." }));
+  await db.doc("users/alice").update({ shareVocabulary: true });
+  await db.doc("users/alice/friends/bob").set({});
+  await db.doc("users/bob/friends/alice").set({});
+  await assertSucceeds(getDoc(doc(client("alice"), path)));
+  await assertFails(getDoc(doc(client("bob"), path)));
+  await assertFails(setDoc(doc(client("bob"), path), { sentence: "Andere Frage" }));
+});
+
 test("review transaction deduplicates concurrent retries and separates derived/direction schedules", async () => {
   const base = { id: "base_with_underscores", german: "stehen" };
   const derived = {

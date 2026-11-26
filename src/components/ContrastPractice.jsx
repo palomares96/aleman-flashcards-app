@@ -4,8 +4,12 @@ import { db } from "../firebase.js";
 import { useStudyData } from "../hooks/useStudyData.js";
 import { readCollection } from "../services/repository.js";
 import { CONTRASTS } from "../data/contrasts.js";
+import { contrastAnswers } from "../utils/contrasts.js";
+import ContrastEditor from "./ContrastEditor.jsx";
 export default function ContrastPractice({ user }) {
-  const { items, loading: vocabularyLoading } = useStudyData(user.uid);
+  const { words, items, loading: vocabularyLoading } = useStudyData(user.uid);
+  const [custom, setCustom] = useState([]);
+  const [editing, setEditing] = useState(false);
   const [all, setAll] = useState(false),
     [index, setIndex] = useState(0),
     [answer, setAnswer] = useState(""),
@@ -16,25 +20,36 @@ export default function ContrastPractice({ user }) {
   const [repeat, setRepeat] = useState([]);
   const [attemptId, setAttemptId] = useState(() => crypto.randomUUID());
   useEffect(() => {
-    readCollection(`users/${user.uid}/contrastProgress`)
-      .then((rows) =>
-        setHistory(Object.fromEntries(rows.map((row) => [row.id, row]))),
+    Promise.all(
+      ["contrastProgress", "customContrasts"].map((name) =>
+        readCollection(`users/${user.uid}/${name}`),
+      ),
+    )
+      .then(([rows, personal]) => {
+        setHistory(Object.fromEntries(rows.map((row) => [row.id, row])));
+        setCustom(personal);
+      })
+      .catch(() =>
+        setError("No se pudieron cargar tus contrastes o su historial."),
       )
-      .catch(() => setError("No se pudo cargar el historial de contrastes."))
       .finally(() => setHistoryLoading(false));
   }, [user.uid]);
   const exercises = useMemo(() => {
     const terms = new Set(items.map((word) => word.german));
-    return CONTRASTS.filter(
-      (exercise) => all || exercise.words.some((word) => terms.has(word)),
-    ).sort(
+    return [
+      ...custom,
+      ...CONTRASTS.filter(
+        (exercise) => all || exercise.words.some((word) => terms.has(word)),
+      ),
+    ].sort(
       (a, b) =>
         Number(history[b.id]?.lastCorrect === false) -
         Number(history[a.id]?.lastCorrect === false),
     );
     // Freeze ordering for this session. Reorder on the next visit.
-  }, [items, all, history]);
+  }, [items, all, history, custom]);
   const exercise = [...exercises, ...repeat][index];
+  const answers = exercise ? contrastAnswers(exercise) : [];
   const save = async (choice) => {
     if (!exercise || saving) return;
     setAnswer(choice);
@@ -42,7 +57,7 @@ export default function ContrastPractice({ user }) {
     setError("");
     try {
       const ref = doc(db, `users/${user.uid}/contrastProgress/${exercise.id}`);
-      const correct = choice === exercise.answer;
+      const correct = answers.includes(choice);
       await runTransaction(db, async (tx) => {
         const attemptRef = doc(
           db,
@@ -78,7 +93,7 @@ export default function ContrastPractice({ user }) {
     }
   };
   const next = () => {
-    if (answer !== exercise.answer && index < exercises.length)
+    if (!answers.includes(answer) && index < exercises.length)
       setRepeat((previous) => [...previous, exercise]);
     setIndex(index + 1);
     setAnswer("");
@@ -86,8 +101,39 @@ export default function ContrastPractice({ user }) {
   };
   if (historyLoading || vocabularyLoading)
     return <p role="status">Preparando contrastes…</p>;
+  if (editing)
+    return (
+      <ContrastEditor
+        uid={user.uid}
+        words={words}
+        onCancel={() => setEditing(false)}
+        onSaved={(created) => {
+          setCustom((previous) => [created, ...previous]);
+          setIndex(0);
+          setRepeat([]);
+          setAnswer("");
+          setAttemptId(crypto.randomUUID());
+          setError("");
+          setEditing(false);
+        }}
+      />
+    );
   return (
     <section className="space-y-3">
+      {words.length >= 2 ? (
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => setEditing(true)}
+          className="py-3 text-teal-300"
+        >
+          Crear contraste
+        </button>
+      ) : (
+        <p className="text-sm text-gray-400">
+          Añade dos fichas a tu biblioteca para crear tu primer contraste.
+        </p>
+      )}
       <details className="text-sm text-gray-400">
         <summary className="cursor-pointer py-2">
           Opciones de contrastes
@@ -118,7 +164,7 @@ export default function ContrastPractice({ user }) {
           <p className="text-sm text-gray-400">
             {index + 1} / {exercises.length + repeat.length}
           </p>
-          <p>{exercise.prompt}</p>
+          {exercise.prompt && <p>{exercise.prompt}</p>}
           <p lang="de" className="text-2xl">
             {exercise.sentence}
           </p>
@@ -138,21 +184,17 @@ export default function ContrastPractice({ user }) {
             <div role="status" className="space-y-3">
               <p
                 className={
-                  answer === exercise.answer
-                    ? "text-green-300"
-                    : "text-amber-300"
+                  answers.includes(answer) ? "text-green-300" : "text-amber-300"
                 }
               >
-                {answer === exercise.answer
+                {answers.includes(answer)
                   ? "Correcto"
-                  : `Respuesta: ${exercise.answer}`}
+                  : `Respuesta: ${answers.join(" / ")}`}
               </p>
-              <details className="text-sm text-gray-300">
-                <summary className="cursor-pointer py-2">
-                  Ver explicación
-                </summary>
-                <p className="mt-2">{exercise.explanation}</p>
-              </details>
+              {answers.includes(answer) && answers.length > 1 && (
+                <p>Opciones válidas · {answers.join(" / ")}</p>
+              )}
+              <p className="text-sm text-gray-300">{exercise.explanation}</p>
               {error ? (
                 <button onClick={() => save(answer)} disabled={saving}>
                   Reintentar guardado

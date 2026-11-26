@@ -158,6 +158,33 @@ const cleanAnswer = (value) =>
     .trim()
     .replace(/\s+/g, " ")
     .replace(/[.!?]+$/, "");
+export function studyQuestion(word, direction, library = []) {
+  if (direction === "es-de")
+    return { text: word.spanish.trim(), context: word.learning?.hintEs || "" };
+  const text = germanAnswer(word);
+  if (word.learning?.exampleDe)
+    return { text, context: word.learning.exampleDe };
+
+  // With no example, the other recorded meanings can still identify the
+  // requested sense. Never use one of this card's accepted answers as a cue.
+  const spanishKey = (value) => cleanAnswer(value).toLocaleLowerCase("es");
+  const accepted = new Set(
+    [word.spanish, ...(word.learning?.alternativesEs || [])].map(spanishKey),
+  );
+  const others = library.filter(
+    (other) =>
+      other.id !== word.id &&
+      germanAnswer(other) === text &&
+      !accepted.has(spanishKey(other.spanish)),
+  );
+  const meanings = [...new Set(others.map((other) => other.spanish))].sort(
+    (a, b) => a.localeCompare(b, "es"),
+  );
+  const context = meanings.length
+    ? `¿Qué otro significado tiene además de ${meanings.map((meaning) => `«${meaning}»`).join(", ")}?`
+    : "";
+  return { text, context };
+}
 export function checkAnswer(answer, word, direction) {
   const expected = direction === "de-es" ? word.spanish : germanAnswer(word);
   const alternatives = [
@@ -187,9 +214,11 @@ export function checkAnswer(answer, word, direction) {
     if (actual.toLowerCase() === cleanAnswer(expected).toLowerCase()) {
       type = "capitalization";
       message =
-        word.type === "noun"
-          ? "Revisa las mayúsculas: los sustantivos se escriben con inicial mayúscula."
-          : "Revisa las mayúsculas: los infinitivos y adjetivos aislados se escriben en minúscula.";
+        word.type === "expression"
+          ? "Revisa las mayúsculas de la expresión."
+          : word.type === "noun"
+            ? "Revisa las mayúsculas: los sustantivos se escriben con inicial mayúscula."
+            : "Revisa las mayúsculas: los infinitivos y adjetivos aislados se escriben en minúscula.";
     } else if (
       word.type === "noun" &&
       actual.replace(/^(der|die|das)\s+/i, "").toLowerCase() ===
