@@ -5,7 +5,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { auth, db } from "../firebase.js";
-import { readCollection } from "./repository.js";
+import { getVocabularyRevision, readCollection } from "./repository.js";
 import { expandVocabulary } from "../utils/vocabulary.js";
 import { applyReview, localDay } from "../utils/study.js";
 
@@ -119,11 +119,25 @@ const assertOwner = (uid) => {
 };
 export async function loadStudy(uid, force = false) {
   const store = getStudyStore(uid);
-  if (store.loadingPromise) return store.loadingPromise;
-  if (!force && Date.now() - store.loaded < 60000) return;
+  const revision = getVocabularyRevision();
+  if (store.loadingPromise) {
+    if (store.loadingRevision === revision) return store.loadingPromise;
+    await store.loadingPromise;
+    return loadStudy(uid);
+  }
+  if (
+    !force &&
+    store.loadedRevision === revision &&
+    Date.now() - store.loaded < 60000
+  )
+    return;
+  store.loadingRevision = revision;
   store.loadingPromise = Promise.resolve()
     .then(async () => {
-      publish(uid, { error: "" });
+      publish(uid, {
+        error: "",
+        ...(store.loadedRevision !== revision && { loading: true }),
+      });
       try {
         assertOwner(uid);
         if (globalThis.navigator?.onLine === false)
@@ -181,6 +195,7 @@ export async function loadStudy(uid, force = false) {
           pending: pendingReviews(uid).length,
         });
         store.loaded = Date.now();
+        store.loadedRevision = revision;
         saveCache(uid);
       } catch (error) {
         if (auth.currentUser?.uid !== uid) return;

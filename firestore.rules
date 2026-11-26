@@ -21,7 +21,7 @@ service cloud.firestore {
       }
       match /friends/{friendId} { allow read: if owner(uid); }
       match /{collection}/{id} {
-        allow read, write: if owner(uid) && collection in ['progress', 'studyProgress', 'studyDays', 'sentenceAttempts', 'user_events', 'savedExamples', 'contrastProgress', 'contrastAttempts'];
+        allow read, write: if owner(uid) && collection in ['progress', 'studyProgress', 'studyDays', 'sentenceAttempts', 'user_events', 'savedExamples', 'contrastProgress', 'contrastAttempts', 'customContrasts'];
       }
       match /reviewEvents/{eventId} {
         allow read: if owner(uid);

@@ -11,9 +11,9 @@ import {
   portableWord,
   vocabularyCSV,
   downloadFile,
-  parseVocabularyBackup,
+  parseStudyBackup,
 } from "../utils/transfer.js";
-import { importVocabulary } from "../services/importVocabulary.js";
+import { importStudyBackup } from "../services/importVocabulary.js";
 import { readCollection } from "../services/repository.js";
 export default function DataSettings({ user, userProfile, onSharingChange }) {
   const study = useStudyData(user.uid);
@@ -55,7 +55,7 @@ export default function DataSettings({ user, userProfile, onSharingChange }) {
   };
   const exportJSON = () =>
     run(async () => {
-      const [history, contrasts, examples, sentences, legacy] =
+      const [history, contrasts, examples, sentences, legacy, personal] =
         await Promise.all(
           [
             "reviewEvents",
@@ -63,6 +63,7 @@ export default function DataSettings({ user, userProfile, onSharingChange }) {
             "savedExamples",
             "sentenceAttempts",
             "progress",
+            "customContrasts",
           ].map((name) => readCollection(`users/${user.uid}/${name}`)),
         );
       downloadFile(
@@ -72,7 +73,8 @@ export default function DataSettings({ user, userProfile, onSharingChange }) {
             format: "aleman-vocabulary",
             version: 1,
             exportedAt: new Date().toISOString(),
-            words: study.words.map(portableWord),
+            words: study.words.map(word => ({ ...portableWord(word), id: word.id })),
+            customContrasts: personal,
             studyProgress: study.progress,
             studyDays: study.daily,
             reviewEvents: history,
@@ -88,7 +90,7 @@ export default function DataSettings({ user, userProfile, onSharingChange }) {
         "application/json",
       );
       setMessage(
-        "Copia exportada. Al importar se recupera el vocabulario; el historial queda incluido como archivo de consulta.",
+        "Copia exportada con tus fichas, contrastes e historial. La importación recupera las fichas y los contrastes.",
       );
     });
   return (
@@ -177,7 +179,7 @@ export default function DataSettings({ user, userProfile, onSharingChange }) {
             if (file)
               run(async () => {
                 if (file.size > 5_000_000) throw new Error("Máximo 5 MB.");
-                setPreview(parseVocabularyBackup(await file.text()));
+                setPreview(parseStudyBackup(await file.text()));
               });
             e.target.value = "";
           }}
@@ -187,23 +189,22 @@ export default function DataSettings({ user, userProfile, onSharingChange }) {
       {preview && (
         <div className="p-4 bg-gray-800 rounded-xl">
           <p>
-            {preview.length} palabras válidas. Se omitirán los duplicados; tu
-            progreso actual se conserva.
+            {preview.words.length} fichas y {preview.customContrasts.length} contrastes personales. Se conservan las fichas y el progreso existentes.
           </p>
           <button
             disabled={busy}
             onClick={() =>
               run(async () => {
-                const result = await importVocabulary(user.uid, preview);
+                const result = await importStudyBackup(user.uid, preview);
                 setMessage(
-                  `Importadas: ${result.imported}. Ya existentes: ${result.skipped}.`,
+                  `Fichas importadas: ${result.imported}. Ya existentes: ${result.skipped}. Contrastes añadidos: ${result.contrastsAdded}.`,
                 );
                 setPreview(null);
               })
             }
             className="mt-3 p-3 bg-blue-600 rounded-xl"
           >
-            Importar estas palabras
+            Importar copia
           </button>
         </div>
       )}

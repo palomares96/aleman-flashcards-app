@@ -7,12 +7,13 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebase.js';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import LearningFields from './LearningFields.jsx';
-import { normalizeGerman, prepareWordForSave } from '../utils/vocabulary.js';
+import { enrichWord, expandVocabulary, prepareWordForSave } from '../utils/vocabulary.js';
 import { initialFormData } from '../config.js';
 
 function WordForm({ user }) {
     const [formData, setFormData] = useState(initialFormData);
     const [categories, setCategories] = useState([]);
+    const [library, setLibrary] = useState([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [feedback, setFeedback] = useState({ type: '', message: '' });
 
@@ -22,7 +23,9 @@ function WordForm({ user }) {
             setCategories(rows.map(row => ({ id: row.id, name: row.name_es })));
         };
         fetchCategories().catch(() => setFeedback({ type: 'error', message: 'No se pudieron cargar las categorías. Puedes reabrir esta pestaña para reintentar.' }));
-    }, []);
+        readCollection(`users/${user.uid}/words`).then(rows => setLibrary(expandVocabulary(rows)))
+            .catch(() => setFeedback({ type: 'error', message: 'No se pudieron cargar las otras acepciones para la vista previa.' }));
+    }, [user.uid]);
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target; const [field, index, subfield] = name.split('.');
@@ -42,12 +45,13 @@ function WordForm({ user }) {
         setFeedback({ type: '', message: '' });
 
         try {
-            const cleanGerman = normalizeGerman(formData.german, formData.type);
+            const prepared = enrichWord(formData);
+            const cleanGerman = prepared.german;
 
             // 2. CHECK DUPLICADOS
             const userWordsCollection = collection(db, `users/${user.uid}/words`);
             const existingWords = await readCollection(`users/${user.uid}/words`);
-            if (existingWords.some(word => lexicalKey(word) === lexicalKey({ ...formData, german: cleanGerman }))) {
+            if (existingWords.some(word => lexicalKey(enrichWord(word)) === lexicalKey(prepared))) {
                 setFeedback({ type: 'error', message: 'Esta palabra y este significado ya existen.' });
                 setIsSubmitting(false);
                 return;
@@ -112,7 +116,9 @@ function WordForm({ user }) {
 
             // 5. GUARDAR
             if (formData.learning) newWord.learning = formData.learning;
-            await addDoc(userWordsCollection, prepareWordForSave(newWord));
+            const saved = prepareWordForSave(newWord);
+            const ref = await addDoc(userWordsCollection, saved);
+            setLibrary(expandVocabulary([...existingWords, { ...saved, id: ref.id }]));
             notifyVocabularyChanged();
 
             setFeedback({ type: 'success', message: `¡"${cleanGerman}" guardada!` });
@@ -128,9 +134,12 @@ function WordForm({ user }) {
     };
 
     return (
-        <div className="w-full max-w-lg mx-auto"><h1 className="mb-8 text-3xl font-bold text-gray-300">Añadir Palabra</h1>
+        <div className="w-full max-w-lg mx-auto"><h1 className="mb-8 text-3xl font-bold text-gray-300">Añadir ficha</h1>
             <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2"><input name="german" value={formData.german} onChange={handleChange} placeholder="Alemán" required className="p-3 bg-gray-700 rounded-md text-white" /><input name="spanish" value={formData.spanish} onChange={handleChange} placeholder="Español" required className="p-3 bg-gray-700 rounded-md text-white" /></div>
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                    <input name="german" aria-label="Alemán" value={formData.german} maxLength={formData.type === 'expression' ? 1000 : 250} onChange={handleChange} placeholder={formData.type === 'noun' ? 'Alemán (sin artículo)' : 'Alemán'} required className="min-w-0 p-3 bg-gray-700 rounded-md text-white" />
+                    <input name="spanish" aria-label="Español" value={formData.spanish} maxLength={1000} onChange={handleChange} placeholder="Español" required className="min-w-0 p-3 bg-gray-700 rounded-md text-white" />
+                </div>
                 <div className="grid grid-cols-2 gap-6">
                     <div>
                         <label className="block mb-2 text-sm text-gray-400">Tipo</label>
@@ -139,6 +148,7 @@ function WordForm({ user }) {
                             <option value="verb">Verbo</option>
                             <option value="adjective">Adjetivo</option>
                             <option value="preposition">Preposición</option>
+                            <option value="expression">Expresión</option>
                             <option value="other">Otros</option>
                         </select>
                     </div>
@@ -190,8 +200,8 @@ function WordForm({ user }) {
                 </div>}
 
                 <GrammarFields word={formData} onChange={grammar => setFormData(prev => ({ ...prev, grammar }))} />
-                <LearningFields word={formData} onChange={learning => setFormData(prev => ({ ...prev, learning }))} />
-                <div className="pt-2 h-12"><button type="submit" disabled={isSubmitting} className="w-full p-4 font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-gray-500">{isSubmitting ? 'Guardando...' : 'Guardar'}</button>{feedback.message && <p className={`mt-2 text-sm text-center ${feedback.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{feedback.message}</p>}</div>
+                <LearningFields word={formData} library={library} onChange={learning => setFormData(prev => ({ ...prev, learning }))} />
+                <div className="pt-2 pb-4"><button type="submit" disabled={isSubmitting} className="w-full p-4 font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-gray-500">{isSubmitting ? 'Guardando...' : 'Guardar'}</button>{feedback.message && <p role="status" className={`mt-2 text-sm text-center ${feedback.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{feedback.message}</p>}</div>
             </form>
         </div>
     );

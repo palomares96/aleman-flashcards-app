@@ -1,10 +1,12 @@
 import GrammarFields from './GrammarFields.jsx';
+import ContrastEditor from './ContrastEditor.jsx';
+import { lexicalKey } from '../utils/transfer.js';
 import { readCollection, notifyVocabularyChanged } from '../services/repository.js';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase.js'; 
 import { collection, addDoc, doc, updateDoc, deleteDoc } from "firebase/firestore";
 import LearningFields from './LearningFields.jsx';
-import { enrichWord, normalizePrefixes, prepareWordForSave } from '../utils/vocabulary.js';
+import { enrichWord, expandVocabulary, normalizePrefixes, prepareWordForSave } from '../utils/vocabulary.js';
 import { initialFormData } from '../config.js'; 
 
 // --- ICONOS ---
@@ -34,15 +36,19 @@ const getBadgeText = (type, gender) => {
     if (type === 'verb') return 'Verb';
     if (type === 'adjective') return 'Adj';
     if (type === 'preposition') return 'Prep';
+    if (type === 'expression') return 'Expresión';
     return 'Otros';
 };
 
 function VocabularyManager({ user }) {
     const [allWords, setAllWords] = useState([]);
+    const library = useMemo(() => expandVocabulary(allWords), [allWords]);
     const [categories, setCategories] = useState([]);
     const [filteredWords, setFilteredWords] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedWord, setSelectedWord] = useState(null);
+    const [comparing, setComparing] = useState(false);
+    const [contrastMessage, setContrastMessage] = useState('');
     const [formData, setFormData] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -93,6 +99,8 @@ function VocabularyManager({ user }) {
     
     // --- MANEJADORES ---
     const handleSelectWord = (word) => {
+        setComparing(false);
+        setContrastMessage('');
         const wordCategory = categories.find(c => c.id === word.categoryId);
         setFormData({
             ...initialFormData,
@@ -133,6 +141,10 @@ function VocabularyManager({ user }) {
         if (!selectedWord) return;
         setIsSaving(true);
         try {
+            if (allWords.some(word => word.id !== selectedWord.id && lexicalKey(word) === lexicalKey(enrichWord(formData)))) {
+                setFeedback({ type: 'error', message: 'Esta ficha y este significado ya existen.' });
+                return;
+            }
             const categoryName = (formData.category.trim() || 'Otros');
             let categoryId = categories.find(c => c.name.toLowerCase() === categoryName.toLowerCase())?.id;
             if (categoryName && !categoryId) {
@@ -142,7 +154,8 @@ function VocabularyManager({ user }) {
             }
 
             let updatedWord = {
-                german: formData.german.trim(),
+                german: formData.german,
+                schemaVersion: selectedWord.schemaVersion,
                 spanish: formData.spanish.trim(),
                 type: formData.type,
                 difficulty: parseInt(formData.difficulty),
@@ -175,7 +188,7 @@ function VocabularyManager({ user }) {
             setAllWords(prev => prev.map(w => w.id === selectedWord.id ? { ...w, ...updatedWord } : w));
             
             setSelectedWord(prev => ({ ...prev, ...updatedWord }));
-            setFormData(prev => ({ ...prev, ...updatedWord }));
+            setFormData(prev => ({ ...prev, ...updatedWord, attributes: { ...prev.attributes, ...updatedWord.attributes } }));
             setFeedback({ type: 'success', message: '¡Guardado con éxito!' });
             setTimeout(() => {
                 setFeedback({ type: '', message: '' });
@@ -253,7 +266,7 @@ function VocabularyManager({ user }) {
                                 `}
                             >
                                 <div className="flex justify-between items-center w-full relative z-10">
-                                    <span className={`font-bold text-lg tracking-tight ${selectedWord?.id === word.id ? 'text-white' : 'text-gray-200'}`}>
+                                    <span className={`min-w-0 whitespace-pre-wrap break-words font-bold text-lg tracking-tight ${selectedWord?.id === word.id ? 'text-white' : 'text-gray-200'}`}>
                                         {word.german}
                                     </span>
                                     {/* Badge pequeño del tipo */}
@@ -292,7 +305,7 @@ function VocabularyManager({ user }) {
                                 <ArrowLeftIcon />
                             </button>
                             <div className="flex-1">
-                                <h2 className="text-xl lg:text-2xl font-bold text-white tracking-tight leading-none">Editar Palabra</h2>
+                                <h2 className="text-xl lg:text-2xl font-bold text-white tracking-tight leading-none">{comparing ? selectedWord.german : 'Editar ficha'}</h2>
                             </div>
                             <button type="button" onClick={handleDelete} className="p-2.5 text-red-400 bg-red-500/10 hover:bg-red-500/20 rounded-xl transition-colors" title="Borrar palabra">
                                 <TrashIcon />
@@ -301,17 +314,27 @@ function VocabularyManager({ user }) {
 
                         {/* Formulario Scrolleable */}
                         <div className="flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar">
+                            {comparing ? <ContrastEditor key={selectedWord.id} uid={user.uid} words={allWords} firstWord={selectedWord}
+                                onCancel={() => setComparing(false)} onSaved={() => {
+                                    setComparing(false);
+                                    setContrastMessage('Contraste guardado. Puedes practicarlo en Jugar → Contrastes.');
+                                }} /> : <>
+                            <button type="button" className="py-3 mb-2 text-teal-300" onClick={() => {
+                                setContrastMessage(allWords.length < 2 ? 'Añade una segunda ficha a la biblioteca para crear un contraste.' : '');
+                                setComparing(allWords.length >= 2);
+                            }}>Comparar con otra</button>
+                            {contrastMessage && <p role="status" className="mb-4 text-sm text-teal-200">{contrastMessage}</p>}
                             <form onSubmit={handleUpdate} className="space-y-8 max-w-3xl mx-auto">
                                 
                                 {/* Campos Principales */}
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                                     <div>
                                         <label className={labelClass}>Alemán</label>
-                                        <input name="german" value={formData.german} onChange={handleChange} className={`${inputClass} text-lg font-bold`} />
+                                        <input name="german" aria-label="Alemán" value={formData.german} maxLength={formData.type === 'expression' ? 1000 : 250} required onChange={handleChange} className={`${inputClass} text-lg font-bold`} />
                                     </div>
                                     <div>
                                         <label className={labelClass}>Español</label>
-                                        <input name="spanish" value={formData.spanish} onChange={handleChange} className={`${inputClass} text-lg font-medium`} />
+                                        <input name="spanish" aria-label="Español" value={formData.spanish} maxLength={1000} required onChange={handleChange} className={`${inputClass} text-lg font-medium`} />
                                     </div>
                                 </div>
 
@@ -325,6 +348,7 @@ function VocabularyManager({ user }) {
                                                 <option value="verb" className={optionClass}>Verbo</option>
                                                 <option value="adjective" className={optionClass}>Adjetivo</option>
                                                 <option value="preposition" className={optionClass}>Preposición</option>
+                                                <option value="expression" className={optionClass}>Expresión</option>
                                                 <option value="other" className={optionClass}>Otros</option>
                                             </select>
                                         </div>
@@ -343,7 +367,7 @@ function VocabularyManager({ user }) {
                                 </div>
 
                                 {/* Paneles Condicionales (Atributos) */}
-                                <div className="bg-white/5 rounded-2xl p-6 border border-white/5">
+                                <div className={formData.type === 'expression' ? 'hidden' : 'bg-white/5 rounded-2xl p-6 border border-white/5'}>
                                     {formData.type === 'noun' && (
                                         <div>
                                             <h3 className="text-sm font-bold text-blue-300 uppercase tracking-wider mb-4">Detalles del Sustantivo</h3>
@@ -410,7 +434,7 @@ function VocabularyManager({ user }) {
                                 </div>
 
                                 <GrammarFields word={formData} onChange={grammar => setFormData(prev => ({ ...prev, grammar }))} />
-                <LearningFields word={formData} onChange={learning => setFormData(prev => ({ ...prev, learning }))} />
+                                <LearningFields word={formData} library={library} onChange={learning => setFormData(prev => ({ ...prev, learning }))} />
 
                                 {/* Botón Guardar Flotante o Fijo */}
                                 <div className="pt-4 pb-2">
@@ -425,7 +449,7 @@ function VocabularyManager({ user }) {
                                         </div>
                                     </div>
                                 </div>
-                            </form>
+                            </form></>}
                         </div>
                     </div>
                 )}

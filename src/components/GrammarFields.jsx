@@ -15,10 +15,10 @@ export default function GrammarFields({ word, onChange }) {
           ]
         : [["pattern", "Caso y preposición"]];
   return (
-    <fieldset className="p-4 rounded-2xl border border-blue-400/20 space-y-3">
-      <legend className="px-2 text-blue-200 font-bold">
+    <details className="p-4 rounded-2xl border border-blue-400/20 space-y-3">
+      <summary className="cursor-pointer text-blue-200 font-bold">
         Gramática (opcional)
-      </legend>
+      </summary>
       {[...fields, ["registerEs", "Matiz o registro (español)"]].map(
         ([key, label]) => (
           <label key={key} className="block text-sm text-gray-300">
@@ -33,6 +33,6 @@ export default function GrammarFields({ word, onChange }) {
           </label>
         ),
       )}
-    </fieldset>
+    </details>
   );
 }
