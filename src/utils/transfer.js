@@ -29,6 +29,8 @@ export function portableWord(word) {
     "schemaVersion",
   ])
     if (word[key] !== undefined) output[key] = word[key];
+  if (!output.category && typeof word.categoryName === "string")
+    output.category = word.categoryName;
   if (
     ![
       "noun",

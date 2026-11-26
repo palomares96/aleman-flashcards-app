@@ -6,7 +6,8 @@ import {
   expandVocabulary,
   normalizePrefixes,
 } from "../utils/vocabulary.js";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { categoryIndex } from "../utils/categories.js";
 import { useStudyData } from "../hooks/useStudyData.js";
 import { recordReview } from "../services/studyStore.js";
 import { readCollection } from "../services/repository.js";
@@ -439,13 +440,13 @@ function StudyCards({ user, prepositionsOnly }) {
     setReasonOpen(false);
   }, [direction, practice, mode, filters, friend]);
   const deck = friend ? sharedWords : study.items;
+  const categories = useMemo(() => categoryIndex(study.categories, deck), [study.categories, deck]);
   const source = prepositionsOnly
     ? deck.filter((word) => word.type === "preposition")
     : deck;
   const filtered = source.filter((word) => {
     if (filters.type && word.type !== filters.type) return false;
-    if (filters.categoryId && word.categoryId !== filters.categoryId)
-      return false;
+    if (!categories.matches(word, filters.categoryId)) return false;
     if (
       filters.difficulty &&
       Number(word.difficulty) !== Number(filters.difficulty)
@@ -476,16 +477,6 @@ function StudyCards({ user, prepositionsOnly }) {
   const word = queue[0];
   const cardId = word ? studyId(word, activeDirection, ownerUid) : null;
   const flipped = cardId !== null && revealedCardId === cardId;
-  const categories = [
-    ...new Map(
-      source
-        .filter((w) => w.categoryId)
-        .map((w) => [
-          w.categoryId,
-          w.category || w.categoryName || w.categoryId,
-        ]),
-    ).entries(),
-  ];
   const answerForm = (event) => {
     event.preventDefault();
     if (!word || !answer.trim()) return;
@@ -716,9 +707,9 @@ function StudyCards({ user, prepositionsOnly }) {
               )}
             {select(
               "Categoría",
-              filters.categoryId,
+              categories.filterId(filters.categoryId),
               (value) => setFilters({ ...filters, categoryId: value }),
-              [["", "Todas"], ...categories],
+              [["", "Todas"], ...categories.filters.map(c => [c.id, c.name])],
             )}
             {select(
               "Dificultad",

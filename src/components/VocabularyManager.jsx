@@ -1,10 +1,13 @@
 import GrammarFields from './GrammarFields.jsx';
+import CategoryField from './CategoryField.jsx';
+import { readCategories, categoryForSave } from '../services/categories.js';
+import { categoryIndex } from '../utils/categories.js';
 import ContrastEditor from './ContrastEditor.jsx';
 import { lexicalKey } from '../utils/transfer.js';
 import { readCollection, notifyVocabularyChanged } from '../services/repository.js';
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase.js'; 
-import { collection, addDoc, doc, updateDoc, deleteDoc } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc } from "firebase/firestore";
 import LearningFields from './LearningFields.jsx';
 import { enrichWord, expandVocabulary, normalizePrefixes, prepareWordForSave } from '../utils/vocabulary.js';
 import { initialFormData } from '../config.js'; 
@@ -44,6 +47,7 @@ function VocabularyManager({ user }) {
     const [allWords, setAllWords] = useState([]);
     const library = useMemo(() => expandVocabulary(allWords), [allWords]);
     const [categories, setCategories] = useState([]);
+    const categoryList = useMemo(() => categoryIndex(categories, allWords), [categories, allWords]);
     const [filteredWords, setFilteredWords] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedWord, setSelectedWord] = useState(null);
@@ -61,7 +65,7 @@ function VocabularyManager({ user }) {
             try {
                 const [wordsSnapshot, categoriesSnapshot] = await Promise.all([
                     readCollection(`users/${user.uid}/words`),
-                    readCollection('categories')
+                    readCategories()
                 ]);
                 const wordsList = wordsSnapshot.map(enrichWord);
                 // Ordenar alfabéticamente por defecto
@@ -69,12 +73,7 @@ function VocabularyManager({ user }) {
                 
                 setAllWords(wordsList);
                 setFilteredWords(wordsList);
-                const cats = categoriesSnapshot.map(row => ({ id: row.id, name: row.name_es }));
-                // Asegurar que 'Otros' esté presente en la lista local de categorías
-                if (!cats.some(c => c.name === 'Otros')) {
-                    cats.unshift({ id: 'otros-local', name: 'Otros' });
-                }
-                setCategories(cats);
+                setCategories(categoriesSnapshot);
             } catch (e) {
                 setFeedback({ type: 'error', message: 'No se pudo cargar la biblioteca. Reabre esta pestaña para reintentar.' });
             } finally {
@@ -101,7 +100,7 @@ function VocabularyManager({ user }) {
     const handleSelectWord = (word) => {
         setComparing(false);
         setContrastMessage('');
-        const wordCategory = categories.find(c => c.id === word.categoryId);
+        const wordCategory = categoryList.forWord(word);
         setFormData({
             ...initialFormData,
             ...word,
@@ -145,13 +144,7 @@ function VocabularyManager({ user }) {
                 setFeedback({ type: 'error', message: 'Esta ficha y este significado ya existen.' });
                 return;
             }
-            const categoryName = (formData.category.trim() || 'Otros');
-            let categoryId = categories.find(c => c.name.toLowerCase() === categoryName.toLowerCase())?.id;
-            if (categoryName && !categoryId) {
-                const newCatRef = await addDoc(collection(db, "categories"), { createdBy: user.uid, name_es: categoryName, name_de: categoryName });
-                setCategories(p => [...p, { id: newCatRef.id, name: categoryName }]);
-                categoryId = newCatRef.id;
-            }
+            const category = await categoryForSave(formData, categories, user.uid, selectedWord);
 
             let updatedWord = {
                 german: formData.german,
@@ -159,7 +152,7 @@ function VocabularyManager({ user }) {
                 spanish: formData.spanish.trim(),
                 type: formData.type,
                 difficulty: parseInt(formData.difficulty),
-                ...(categoryId && { categoryId }),
+                ...category,
                 ...(formData.grammar ? { grammar: formData.grammar } : {}),
                 attributes: { ...selectedWord.attributes }
             };
@@ -195,7 +188,7 @@ function VocabularyManager({ user }) {
                 // No cerramos el formulario para permitir seguir editando si se quiere
             }, 2000);
 
-        } catch (err) { console.error(err); setFeedback({ type: 'error', message: 'Error al actualizar.' }); } 
+        } catch (err) { console.error(err); setFeedback({ type: 'error', message: err.code ? 'No se pudo actualizar la ficha.' : err.message }); }
         finally { setIsSaving(false); }
     };
     
@@ -360,9 +353,8 @@ function VocabularyManager({ user }) {
                                         </select>
                                     </div>
                                     <div className="col-span-2 sm:col-span-1">
-                                        <label className={labelClass}>Categoría</label>
-                                        <input name="category" value={formData.category} onChange={handleChange} list="categories-list" className={inputClass} placeholder="Sin categoría" />
-                                        <datalist id="categories-list">{categories.map(cat => <option key={cat.id} value={cat.name} />)}</datalist>
+                                        <CategoryField form={formData} options={categoryList.options} editing
+                                            onChange={patch => setFormData(prev => ({ ...prev, ...patch }))} />
                                     </div>
                                 </div>
 

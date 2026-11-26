@@ -6,6 +6,7 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "../firebase.js";
 import { getVocabularyRevision, readCollection } from "./repository.js";
+import { readCategories } from "./categories.js";
 import { expandVocabulary } from "../utils/vocabulary.js";
 import { applyReview, localDay } from "../utils/study.js";
 
@@ -82,6 +83,7 @@ function saveCache(uid) {
       JSON.stringify({
         version: 1,
         words: state.words,
+        categories: state.categories,
         progress: state.progress,
         daily: state.daily,
         savedAt: Date.now(),
@@ -95,6 +97,7 @@ export function getStudyStore(uid) {
       listeners: new Set(),
       state: {
         words: [],
+        categories: [],
         items: [],
         progress: {},
         daily: {},
@@ -142,10 +145,11 @@ export async function loadStudy(uid, force = false) {
         assertOwner(uid);
         if (globalThis.navigator?.onLine === false)
           throw new Error("Sin conexión.");
-        const [words, records, days] = await Promise.all([
+        const [words, records, days, categories] = await Promise.all([
           readCollection(`users/${uid}/words`),
           readCollection(`users/${uid}/studyProgress`),
           readCollection(`users/${uid}/studyDays`),
+          readCategories(),
         ]);
         assertOwner(uid);
         const progress = Object.fromEntries(
@@ -187,6 +191,7 @@ export async function loadStudy(uid, force = false) {
         }
         publish(uid, {
           words,
+          categories,
           items: expandVocabulary(words),
           progress,
           daily,

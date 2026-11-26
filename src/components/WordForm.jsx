@@ -1,9 +1,12 @@
 import GrammarFields from './GrammarFields.jsx';
+import CategoryField from './CategoryField.jsx';
+import { readCategories, categoryForSave } from '../services/categories.js';
+import { categoryIndex } from '../utils/categories.js';
 import { lexicalKey } from '../utils/transfer.js';
 import { readCollection, notifyVocabularyChanged } from '../services/repository.js';
 // src/components/WordForm.jsx
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase.js';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import LearningFields from './LearningFields.jsx';
@@ -12,17 +15,23 @@ import { initialFormData } from '../config.js';
 
 function WordForm({ user }) {
     const [formData, setFormData] = useState(initialFormData);
-    const [categories, setCategories] = useState([]);
+    const [categories, setCategories] = useState(null);
+    const [categoryLoadFailed, setCategoryLoadFailed] = useState(false);
     const [library, setLibrary] = useState([]);
+    const categoryList = useMemo(() => categoryIndex(categories || [], library), [categories, library]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [feedback, setFeedback] = useState({ type: '', message: '' });
 
+    const fetchCategories = async () => {
+        setCategoryLoadFailed(false);
+        try {
+            setCategories(await readCategories());
+        } catch {
+            setCategoryLoadFailed(true);
+        }
+    };
     useEffect(() => {
-        const fetchCategories = async () => {
-            const rows = await readCollection('categories');
-            setCategories(rows.map(row => ({ id: row.id, name: row.name_es })));
-        };
-        fetchCategories().catch(() => setFeedback({ type: 'error', message: 'No se pudieron cargar las categorías. Puedes reabrir esta pestaña para reintentar.' }));
+        void fetchCategories();
         readCollection(`users/${user.uid}/words`).then(rows => setLibrary(expandVocabulary(rows)))
             .catch(() => setFeedback({ type: 'error', message: 'No se pudieron cargar las otras acepciones para la vista previa.' }));
     }, [user.uid]);
@@ -57,34 +66,8 @@ function WordForm({ user }) {
                 return;
             }
 
-            // 3. GESTIÓN DE CATEGORÍAS
-            // Si el usuario no especifica categoría, usamos 'Otros' por defecto
-            const categoryName = formData.category.trim() || 'Otros';
-            let categoryId = null;
-
-            if (categoryName) {
-                // Buscamos insensible a mayúsculas
-                const existingCat = categories.find(c => c.name.toLowerCase() === categoryName.toLowerCase());
-
-                if (existingCat) {
-                    categoryId = existingCat.id;
-                } else {
-                    // CREAR NUEVA CATEGORÍA
-                    try {
-                        const newCatRef = await addDoc(collection(db, "categories"), {
-                                createdBy: user.uid, name_es: categoryName,
-                                name_de: categoryName, // Placeholder
-                                createdAt: serverTimestamp()
-                            });
-                        // Actualizamos estado local para que aparezca en la lista la próxima vez
-                        setCategories(p => [...p, { id: newCatRef.id, name: categoryName }]);
-                            categoryId = newCatRef.id;
-                    } catch (catErr) {
-                        console.error("Error creando categoría:", catErr);
-                        // Si falla, guardamos la palabra sin categoría para no bloquear al usuario
-                    }
-                }
-            }
+            const catalog = categories ?? await readCategories();
+            const category = await categoryForSave(formData, catalog, user.uid);
 
             // 4. CONSTRUIR OBJETO
             const newWord = {
@@ -92,7 +75,7 @@ function WordForm({ user }) {
                 spanish: formData.spanish.trim(),
                 type: formData.type,
                 difficulty: parseInt(formData.difficulty),
-                categoryId: categoryId || "", // Aseguramos string vacío si es null
+                ...category,
                 attributes: {},
                 ...(formData.grammar ? { grammar: formData.grammar } : {}),
                 createdAt: serverTimestamp()
@@ -118,6 +101,8 @@ function WordForm({ user }) {
             if (formData.learning) newWord.learning = formData.learning;
             const saved = prepareWordForSave(newWord);
             const ref = await addDoc(userWordsCollection, saved);
+            setCategories(catalog.some(c => c.id === category.categoryId) ? catalog :
+                [...catalog, { id: category.categoryId, name: category.category }]);
             setLibrary(expandVocabulary([...existingWords, { ...saved, id: ref.id }]));
             notifyVocabularyChanged();
 
@@ -127,7 +112,7 @@ function WordForm({ user }) {
 
         } catch (err) {
             console.error("Error al añadir palabra:", err);
-            setFeedback({ type: 'error', message: 'No se pudo guardar la palabra.' });
+            setFeedback({ type: 'error', message: err.code ? 'No se pudo guardar la ficha. Vuelve a intentarlo.' : err.message });
         } finally {
             setIsSubmitting(false);
         }
@@ -165,24 +150,11 @@ function WordForm({ user }) {
                 </div>
                                 {(formData.type === 'adjective' || formData.type === 'other') && <p className="text-sm text-gray-500 italic text-center">No hay atributos especiales para este tipo.</p>}
 
-                {/* INPUT DE CATEGORÍA CON DATALIST */}
-                <div>
-                    <label htmlFor="category" className="block mb-2 text-sm text-gray-400">Categoría</label>
-                    <input
-                        name="category"
-                        value={formData.category}
-                        onChange={handleChange}
-                        list="categories-list"
-                        id="category"
-                        placeholder="Elige o escribe una nueva..."
-                        className="w-full p-3 bg-gray-700 rounded-md text-white"
-                    />
-                    <datalist id="categories-list">
-                        {categories.map(cat => <option key={cat.id} value={cat.name} />)}
-                        {/* Aseguramos que 'Otros' siempre esté disponible en la lista */}
-                        {(!categories.some(c => c.name === 'Otros')) && <option key="otros-local" value="Otros" />}
-                    </datalist>
-                </div>
+                <CategoryField form={formData} options={categoryList.options} loading={!categories && !categoryLoadFailed}
+                    onChange={patch => setFormData(prev => ({ ...prev, ...patch }))} />
+                {categoryLoadFailed && <p role="alert" className="text-sm text-amber-300">
+                    No se pudo cargar el catálogo. <button type="button" className="underline" onClick={fetchCategories}>Reintentar</button>
+                </p>}
 
                 {formData.type === 'noun' && <div className="p-4 rounded-lg bg-gray-800/50 space-y-4"><h3 className="font-semibold text-blue-400">Sustantivo</h3><select name="gender" value={formData.attributes.gender} onChange={handleChange} required className="w-full p-3 bg-gray-700 rounded-md text-white"><option value="">Género...</option><option value="m">der</option><option value="f">die</option><option value="n">das</option></select></div>}
                 {formData.type === 'preposition' && <div className="p-4 rounded-lg bg-gray-800/50 space-y-4"><h3 className="font-semibold text-green-400">Preposición</h3><select name="case" value={formData.attributes.case} onChange={handleChange} required className="w-full p-3 bg-gray-700 rounded-md text-white"><option value="">Caso...</option><option value="Akkusativ">Akkusativ</option><option value="Dativ">Dativ</option><option value="Genitiv">Genitiv</option><option value="Wechselpräposition">Wechselpräposition</option></select></div>}
