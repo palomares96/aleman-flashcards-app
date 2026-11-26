@@ -138,16 +138,18 @@ test('learning details stay out of the game until opened and do not flip the car
     await ui.act(async () => card.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
     assert.equal(card.getAttribute('aria-pressed'), 'true');
     assert.equal(document.querySelector('aside'), null);
-    assert.equal(button('Ver detalle'), undefined);
+    assert.equal(button('Última respuesta'), undefined);
     await click(button('Me la sé'));
-    await click(button('Ver detalle'));
+    const nextCard = document.querySelector('[aria-label="Girar tarjeta"]');
+    assert.notEqual(nextCard, card);
+    assert.equal(nextCard.getAttribute('aria-pressed'), 'false');
+    await click(button('Última respuesta'));
     assert.equal(document.querySelectorAll('aside li').length, 5);
     assert.match(document.querySelector('aside').textContent, /vorstellen/);
     assert.match(document.querySelector('aside').textContent, /legen/);
     await click(document.querySelector('aside'));
-    assert.equal(card.getAttribute('aria-pressed'), 'true');
+    assert.equal(nextCard.getAttribute('aria-pressed'), 'false');
     await closeSheet();
-    await click(button('Siguiente ficha'));
     assert.equal(document.querySelector('aside'), null);
   } finally { await unmount(); Math.random = random; }
 });
@@ -215,12 +217,13 @@ test('typed study requires reveal, classifies errors and persists the chosen dir
     await closeSheet();
     await setValue('input[aria-label="Tu respuesta"]', 'STELLEN');
     await ui.act(async () => document.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })));
-    assert.equal(button('Ver detalle'), undefined);
+    assert.equal(button('Última respuesta'), undefined);
     assert.ok(button('Me la sé'));
     assert.ok(button('No me la sé'));
     await click(button('No me la sé'));
     await click(button('Continuar sin motivo'));
-    await click(button('Ver detalle'));
+    assert.equal(document.querySelector('input[aria-label="Tu respuesta"]').value, '');
+    await click(button('Última respuesta'));
     assert.match(container().textContent, /minúscula/);
     await closeSheet();
     const event = ui.state.writes.find(write => write.ref.path.includes('/reviewEvents/')).data;
@@ -228,7 +231,6 @@ test('typed study requires reveal, classifies errors and persists the chosen dir
     assert.equal(event.errorType, 'capitalization');
     assert.equal(event.german, 'stellen');
     assert.equal(event.rating, 1);
-    await click(button('Siguiente ficha'));
     assert.equal(document.querySelector('aside'), null);
   } finally { await unmount(); }
 });
@@ -239,20 +241,20 @@ test('word cards offer two choices and knowing a card records success without as
     await click(button('Mostrar respuesta'));
     assert.ok(button('Me la sé'));
     assert.ok(button('No me la sé'));
-    assert.equal(button('Ver detalle'), undefined);
+    assert.equal(button('Última respuesta'), undefined);
     assert.equal(button('Difícil'), undefined);
     assert.equal(button('Fácil'), undefined);
     await click(button('Me la sé'));
-    assert.ok(button('Ver detalle'));
-    await click(button('Ver detalle'));
+    assert.ok(button('Mostrar respuesta'));
+    assert.equal(button('Siguiente ficha'), undefined);
+    await click(button('Última respuesta'));
     assert.match(document.querySelector('dialog[open]').textContent, /Solución:/);
     await closeSheet();
     const events = ui.state.writes.filter(write => write.ref.path.includes('/reviewEvents/'));
     assert.equal(events.length, 1);
     assert.equal(events[0].data.rating, 3);
     assert.equal(document.querySelector('dialog[open]'), null);
-    await click(button('Siguiente ficha'));
-    assert.equal(button('Ver detalle'), undefined);
+    assert.equal(button('Me la sé'), undefined);
   } finally { await unmount(); }
 });
 
@@ -271,7 +273,8 @@ test('not knowing a card asks for an optional one-tap reason and supports return
     assert.equal(events.length, 1);
     assert.equal(events[0].data.rating, 1);
     assert.equal(events[0].data.errorType, 'conjugation');
-    await click(button('Siguiente ficha'));
+    assert.equal(document.querySelector('dialog[open]'), null);
+    assert.ok(button('Mostrar respuesta'));
     await click(button('Mostrar respuesta'));
     await click(button('No me la sé'));
     await click(button('Continuar sin motivo'));
@@ -295,22 +298,43 @@ test('a completed round summarizes results and retries only the missed cards unt
     await click(button('Mostrar respuesta'));
     await click(button('No me la sé'));
     await click(button('Continuar sin motivo'));
-    await click(button('Siguiente ficha'));
+    assert.match(document.querySelector('.study-card-face[aria-hidden="false"]').textContent, /Buch/);
     await click(button('Mostrar respuesta'));
     await click(button('Me la sé'));
-    await click(button('Siguiente ficha'));
     assert.match(container().textContent, /1 aciertos · 1 fallos/);
+    await click(button('Última respuesta'));
+    assert.match(document.querySelector('dialog[open]').textContent, /libro/);
+    await closeSheet();
     assert.ok(button('Reintentar 1 fallos'));
     await click(button('Reintentar 1 fallos'));
     assert.match(container().textContent, /Haus/);
     assert.doesNotMatch(container().textContent, /Buch/);
     await click(button('Mostrar respuesta'));
     await click(button('Me la sé'));
-    await click(button('Siguiente ficha'));
     assert.match(container().textContent, /Repaso completo/);
     assert.match(container().textContent, /2 fichas/);
     assert.equal(ui.state.writes.filter(write => write.ref.path.includes('/reviewEvents/')).length, 3);
   } finally { await unmount(); }
+});
+
+test('a failed local save keeps the card and reason picker available for retry', async () => {
+  const unmount = await mount(ui.Game);
+  const storage = window.Storage.prototype;
+  const originalSetItem = storage.setItem;
+  try {
+    await click(button('Mostrar respuesta'));
+    await click(button('No me la sé'));
+    storage.setItem = () => { throw new Error('Sin espacio'); };
+    await click(button('Conjugación'));
+    assert.match(document.querySelector('dialog[open]').textContent, /No se guardó/);
+    assert.equal(button('Última respuesta'), undefined);
+    assert.match(container().textContent, /0 hechas/);
+    storage.setItem = originalSetItem;
+    await click(button('Conjugación'));
+    assert.equal(document.querySelector('dialog[open]'), null);
+    assert.ok(button('Mostrar respuesta'));
+    assert.equal(ui.state.writes.filter(write => write.ref.path.includes('/reviewEvents/')).length, 1);
+  } finally { storage.setItem = originalSetItem; await unmount(); }
 });
 
 test('turning over a base verb shows its forms and a compact derived-verb summary', async () => {
@@ -338,11 +362,12 @@ test('dictation hides the answer and offers a clear unsupported-audio fallback',
     await click([...document.querySelectorAll('button')].find(button => button.textContent.includes('Escuchar alemán')));
     assert.match(container().textContent, /no ofrece lectura/);
     await click([...document.querySelectorAll('button')].find(button => button.textContent === 'Mostrar respuesta'));
-    assert.equal(button('Ver detalle'), undefined);
+    assert.equal(button('Última respuesta'), undefined);
     assert.ok(button('Me la sé'));
     assert.ok(button('No me la sé'));
     await click(button('Me la sé'));
-    await click(button('Ver detalle'));
+    assert.ok(button('Escuchar alemán'));
+    await click(button('Última respuesta'));
     assert.match(document.querySelector('aside').textContent, /Familia de stellen/);
   } finally { await unmount(); }
 });
@@ -425,6 +450,7 @@ test('prepositions have a direct practice mode, filter by case, and keep German 
     const review = ui.state.writes.find(write => write.ref.path.includes('/reviewEvents/')).data;
     assert.equal(review.wordId, 'unter');
     assert.equal(review.filters.type, 'preposition');
+    assert.match(container().textContent, /¡Repaso completo!/);
     await click(button('Repasar'));
     await settings();
     assert.equal(document.querySelector('select[aria-label="Tipo"]').value, 'noun');

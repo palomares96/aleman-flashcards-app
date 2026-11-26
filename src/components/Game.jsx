@@ -423,7 +423,7 @@ function StudyCards({ user, prepositionsOnly }) {
   const [flipped, setFlipped] = useState(false);
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState(null);
-  const [reviewed, setReviewed] = useState(null);
+  const [lastReview, setLastReview] = useState(null);
   const [errorType, setErrorType] = useState("meaning");
   const [error, setError] = useState("");
   const [session, setSession] = useState({
@@ -487,7 +487,7 @@ function StudyCards({ user, prepositionsOnly }) {
     setFlipped(false);
     setAnswer("");
     setFeedback(null);
-    setReviewed(null);
+    setLastReview(null);
     setDetailsOpen(false);
     setReasonOpen(false);
   }, [direction, practice, mode, filters, friend]);
@@ -526,7 +526,7 @@ function StudyCards({ user, prepositionsOnly }) {
     activeDirection,
     ownerUid,
   ).filter((word) => !done.includes(studyId(word, activeDirection, ownerUid)));
-  const word = reviewed?.word || queue[0];
+  const word = queue[0];
   const categories = [
     ...new Map(
       source
@@ -546,7 +546,7 @@ function StudyCards({ user, prepositionsOnly }) {
     setFlipped(true);
   };
   const rate = (rating, reason = errorType) => {
-    if (!word || !flipped || busy || reviewed) return;
+    if (!word || !flipped || busy) return;
     setBusy(true);
     setError("");
     try {
@@ -577,24 +577,18 @@ function StudyCards({ user, prepositionsOnly }) {
             ? [...previous.incorrect, { word, cardId }]
             : previous.incorrect,
       }));
-      setReviewed({ word, cardId, rating, reason });
-      setDetailsOpen(false);
+      setLastReview({ word, rating, reason, feedback });
+      setDone((previous) => [...previous, cardId]);
+      setFlipped(false);
+      setAnswer("");
+      setFeedback(null);
+      setErrorType("meaning");
       setReasonOpen(false);
     } catch (failure) {
       setError(`No se guardó el repaso. ${failure.message}`);
     } finally {
       setBusy(false);
     }
-  };
-  const nextCard = () => {
-    if (!reviewed) return;
-    setDone((previous) => [...previous, reviewed.cardId]);
-    setReviewed(null);
-    setFlipped(false);
-    setAnswer("");
-    setFeedback(null);
-    setErrorType("meaning");
-    setDetailsOpen(false);
   };
   const restartRound = (onlyMistakes) => {
     if (onlyMistakes && !session.incorrect.length) return;
@@ -609,7 +603,7 @@ function StudyCards({ user, prepositionsOnly }) {
     }
     setDone([]);
     setSession({ total: 0, correct: 0, incorrect: [] });
-    setReviewed(null);
+    setLastReview(null);
     setFlipped(false);
     setAnswer("");
     setFeedback(null);
@@ -659,13 +653,22 @@ function StudyCards({ user, prepositionsOnly }) {
                   : "ES → DE"}
             </span>
           </h1>
-          <p className="text-xs text-gray-400">
+          <p aria-live="polite" className="text-xs text-gray-400">
             {session.total} hechas · {queue.length} pendientes
             {Object.values(filters).some(Boolean) || friend
               ? " · Filtrado"
               : ""}
           </p>
         </div>
+        {lastReview && (
+          <button
+            type="button"
+            className="ml-auto px-1 py-3 text-sm text-blue-300"
+            onClick={() => setDetailsOpen(true)}
+          >
+            Última respuesta
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setSettingsOpen(true)}
@@ -676,6 +679,47 @@ function StudyCards({ user, prepositionsOnly }) {
           <span>Ajustes</span>
         </button>
       </header>
+      {lastReview && (
+        <StudySheet
+          open={detailsOpen}
+          onClose={() => setDetailsOpen(false)}
+          title="Última respuesta"
+        >
+          <p className="mb-3 text-sm text-gray-300">
+            Solución:{" "}
+            <strong>
+              {activeDirection === "de-es"
+                ? lastReview.word.spanish
+                : germanAnswer(lastReview.word)}
+            </strong>
+          </p>
+          {lastReview.rating === 1 && lastReview.reason !== "unspecified" && (
+            <p className="mb-3 text-sm text-gray-400">
+              Motivo: {ERROR_LABELS[lastReview.reason]}
+            </p>
+          )}
+          {lastReview.feedback && (
+            <div className="space-y-2 mb-5">
+              <p
+                className={
+                  lastReview.feedback.correct
+                    ? "text-green-300"
+                    : "text-amber-300"
+                }
+              >
+                {lastReview.feedback.message}
+              </p>
+              {!lastReview.feedback.correct && lastReview.rating === 3 && (
+                <p className="text-sm text-gray-400">
+                  Si tu alternativa es válida, añádela en la biblioteca para
+                  aceptarla en próximos ejercicios.
+                </p>
+              )}
+            </div>
+          )}
+          <WordLearningPanel word={lastReview.word} />
+        </StudySheet>
+      )}
       <StudySheet
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
@@ -834,14 +878,13 @@ function StudyCards({ user, prepositionsOnly }) {
               </div>
             ) : (
               <ActiveCard
+                key={word.id}
                 palabra={word}
                 flipped={flipped}
                 direction={practice === "listen" ? "es-de" : direction}
                 onClick={() => {
-                  if (reviewed) return;
                   setFlipped(!flipped);
                   setFeedback(null);
-                  setDetailsOpen(false);
                 }}
                 isSwipingOut={false}
               />
@@ -883,61 +926,34 @@ function StudyCards({ user, prepositionsOnly }) {
             )}
             {flipped && (
               <>
-                <div className="flex items-center justify-between gap-2 text-sm">
-                  <p
-                    role="status"
-                    className={
-                      feedback?.correct ? "text-green-300" : "text-gray-300"
-                    }
-                  >
-                    {reviewed
-                      ? reviewed.rating === 1
-                        ? "Marcada para repasar"
-                        : "Respuesta guardada"
-                      : feedback
-                        ? feedback.correct
-                          ? "Correcto"
-                          : `Revisa: ${ERROR_LABELS[feedback.type] || "respuesta"}`
-                        : "¿Cómo te ha ido?"}
-                  </p>
-                  {reviewed && (
+                <p
+                  role="status"
+                  className={`text-sm ${feedback?.correct ? "text-green-300" : "text-gray-300"}`}
+                >
+                  {feedback
+                    ? feedback.correct
+                      ? "Correcto"
+                      : `Revisa: ${ERROR_LABELS[feedback.type] || "respuesta"}`
+                    : "¿Cómo te ha ido?"}
+                </p>
+                <div className="study-ratings grid grid-cols-2 gap-2">
+                  {[
+                    [1, "No me la sé"],
+                    [3, "Me la sé"],
+                  ].map(([rating, label]) => (
                     <button
-                      type="button"
-                      className="shrink-0 px-2 py-3 text-blue-300"
-                      onClick={() => setDetailsOpen(true)}
+                      key={rating}
+                      aria-label={label}
+                      disabled={busy}
+                      onClick={() =>
+                        rating === 1 ? setReasonOpen(true) : rate(rating)
+                      }
+                      className={`px-1 py-3 rounded-xl text-sm font-semibold ${rating === 1 ? "bg-red-900/70" : "bg-teal-900/70"}`}
                     >
-                      Ver detalle
+                      {label}
                     </button>
-                  )}
+                  ))}
                 </div>
-                {reviewed ? (
-                  <button
-                    type="button"
-                    onClick={nextCard}
-                    className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold"
-                  >
-                    Siguiente ficha
-                  </button>
-                ) : (
-                  <div className="study-ratings grid grid-cols-2 gap-2">
-                    {[
-                      [1, "No me la sé"],
-                      [3, "Me la sé"],
-                    ].map(([rating, label]) => (
-                      <button
-                        key={rating}
-                        aria-label={label}
-                        disabled={busy}
-                        onClick={() =>
-                          rating === 1 ? setReasonOpen(true) : rate(rating)
-                        }
-                        className={`px-1 py-3 rounded-xl text-sm font-semibold ${rating === 1 ? "bg-red-900/70" : "bg-teal-900/70"}`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                )}
                 <StudySheet
                   open={reasonOpen}
                   onClose={() => setReasonOpen(false)}
@@ -975,45 +991,6 @@ function StudyCards({ user, prepositionsOnly }) {
                   >
                     Continuar sin motivo
                   </button>
-                </StudySheet>
-                <StudySheet
-                  open={detailsOpen}
-                  onClose={() => setDetailsOpen(false)}
-                  title="Sobre esta respuesta"
-                >
-                  <p className="mb-3 text-sm text-gray-300">
-                    Solución:{" "}
-                    <strong>
-                      {practice === "listen" || direction === "es-de"
-                        ? germanAnswer(word)
-                        : word.spanish}
-                    </strong>
-                  </p>
-                  {reviewed?.rating === 1 &&
-                    reviewed.reason !== "unspecified" && (
-                      <p className="mb-3 text-sm text-gray-400">
-                        Motivo: {ERROR_LABELS[reviewed.reason]}
-                      </p>
-                    )}
-                  {feedback && (
-                    <div role="status" className="space-y-2 mb-5">
-                      <p
-                        className={
-                          feedback.correct ? "text-green-300" : "text-amber-300"
-                        }
-                      >
-                        {feedback.message}
-                      </p>
-                      {!feedback.correct && reviewed?.rating === 3 && (
-                        <p className="text-sm text-gray-400">
-                          Si tu alternativa es válida, puedes marcar «Me la sé».
-                          Añádela en la biblioteca para aceptarla en próximos
-                          ejercicios.
-                        </p>
-                      )}
-                    </div>
-                  )}
-                  <WordLearningPanel word={word} />
                 </StudySheet>
               </>
             )}
