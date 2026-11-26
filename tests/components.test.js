@@ -298,7 +298,7 @@ test('a completed round summarizes results and retries only the missed cards unt
     await click(button('Mostrar respuesta'));
     await click(button('No me la sé'));
     await click(button('Continuar sin motivo'));
-    assert.match(document.querySelector('.study-card-face[aria-hidden="false"]').textContent, /Buch/);
+    assert.match(document.querySelector('.study-card-face').textContent, /Buch/);
     await click(button('Mostrar respuesta'));
     await click(button('Me la sé'));
     assert.match(container().textContent, /1 aciertos · 1 fallos/);
@@ -337,13 +337,53 @@ test('a failed local save keeps the card and reason picker available for retry',
   } finally { storage.setItem = originalSetItem; await unmount(); }
 });
 
+test('a new Spanish prompt contains only its neutral face until that card is revealed', async () => {
+  const noun = { id: 'haus', german: 'Haus', spanish: 'casa', type: 'noun', attributes: { gender: 'n' } };
+  const prep = { id: 'mit', german: 'mit', spanish: 'con', type: 'preposition', attributes: { case: 'Dativ' } };
+  const unmount = await mount(ui.Game, [noun, prep]);
+  const assertPrompt = (spanish, german) => {
+    const card = document.querySelector('[aria-label="Girar tarjeta"]');
+    assert.equal(card.getAttribute('aria-pressed'), 'false');
+    assert.equal(card.querySelectorAll('.study-card-face').length, 1);
+    assert.equal(card.querySelector('h2').textContent, spanish);
+    assert.ok(card.querySelector('.from-gray-700'));
+    assert.equal(card.querySelector('.from-blue-600, .from-emerald-500'), null);
+    assert.ok(!card.textContent.includes(german));
+  };
+  try {
+    await settings();
+    await setValue('select[aria-label="Dirección"]', 'es-de');
+    await closeSheet();
+    assertPrompt('casa', 'Haus');
+    await click(button('Mostrar respuesta'));
+    assert.match(document.querySelector('.study-card-face').textContent, /das Haus/);
+    await click(button('Me la sé'));
+    assertPrompt('con', 'Dativo');
+    await click(button('Mostrar respuesta'));
+    assert.ok(document.querySelector('.study-card-face.from-blue-600'));
+    await click(button('No me la sé'));
+    await click(button('Caso'));
+    await click(button('Reintentar 1 fallos'));
+    assertPrompt('con', 'Dativo');
+
+    // A library refresh can replace the current word while its answer is open.
+    await click(button('Mostrar respuesta'));
+    await click(button('Me la sé'));
+    await click(button('Empezar otro repaso'));
+    await click(button('Mostrar respuesta'));
+    ui.state.rows = [prep];
+    await ui.act(async () => window.dispatchEvent(new window.Event('vocabulary-changed')));
+    assertPrompt('con', 'Dativo');
+  } finally { await unmount(); }
+});
+
 test('turning over a base verb shows its forms and a compact derived-verb summary', async () => {
   const unmount = await mount(ui.Game);
   try {
-    const front = document.querySelector('.study-card-face[aria-hidden="false"]');
+    const front = document.querySelector('.study-card-face');
     assert.doesNotMatch(front.textContent, /Derivados/);
     await click(button('Mostrar respuesta'));
-    const back = document.querySelector('.study-card-face[aria-hidden="false"]');
+    const back = document.querySelector('.study-card-face');
     assert.match(back.textContent, /Conjugación:/);
     assert.match(back.textContent, /stellt · stellte · gestellt/);
     assert.match(back.textContent, /Derivados/);
@@ -419,7 +459,7 @@ test('prepositions have a direct practice mode, filter by case, and keep German 
     id: german, type: 'preposition', german, spanish, attributes: { case: grammaticalCase },
   }));
   const unmount = await mount(ui.Game, [baseWord(), ...rows]);
-  const visibleFace = () => document.querySelector('.study-card-face[aria-hidden="false"]');
+  const visibleFace = () => document.querySelector('.study-card-face');
   try {
     await settings();
     await setValue('select[aria-label="Tipo"]', 'noun');

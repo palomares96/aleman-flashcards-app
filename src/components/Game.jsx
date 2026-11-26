@@ -117,13 +117,7 @@ const RotateIcon = () => (
 // =================================================================================
 // COMPONENTE VISUAL: CARA DE LA TARJETA
 // =================================================================================
-const CardFace = ({
-  palabra,
-  isFront,
-  direction,
-  baseGradientClasses,
-  isVisible,
-}) => {
+const CardFace = ({ palabra, isFront, direction, baseGradientClasses }) => {
   const isGermanSide =
     (isFront && direction === "de-es") || (!isFront && direction === "es-de");
   const mainText = isGermanSide
@@ -185,17 +179,12 @@ const CardFace = ({
 
   return (
     <div
-      aria-hidden={!isVisible}
       className={`
-            absolute w-full h-full rounded-[2rem] 
+            relative w-full h-full rounded-[2rem]
             ${faceGradient} 
             backdrop-blur-xl border border-white/20 shadow-2xl 
-            study-card-face flex flex-col overflow-y-auto backface-hidden
+            study-card-face flex flex-col overflow-y-auto
         `}
-      style={{
-        backfaceVisibility: "hidden",
-        transform: isFront ? "rotateY(0deg)" : "rotateY(180deg)",
-      }}
     >
       {/* Capa de brillo */}
       <div
@@ -278,29 +267,7 @@ const CardFace = ({
   );
 };
 
-// =================================================================================
-// COMPONENTE VISUAL: STACK DE CARTAS (CON ANIMACIONES AJUSTADAS)
-// =================================================================================
-const DeckBackground = ({ count }) => {
-  if (count <= 1) return null;
-  const stackColor = "bg-gray-800"; // Always neutral to avoid spoilers
-  return (
-    <div className="absolute inset-0 w-full h-full pointer-events-none">
-      {count > 1 && (
-        <div
-          className={`absolute inset-0 rounded-[2rem] ${stackColor} opacity-30 transform translate-y-8 scale-[0.90] blur-[1px] transition-all duration-300`}
-        ></div>
-      )}
-      {count > 0 && (
-        <div
-          className={`absolute inset-0 rounded-[2rem] ${stackColor} opacity-50 transform translate-y-4 scale-[0.95] transition-all duration-300 shadow-xl`}
-        ></div>
-      )}
-    </div>
-  );
-};
-
-const ActiveCard = ({ palabra, flipped, direction, onClick, isSwipingOut }) => {
+const ActiveCard = ({ palabra, flipped, direction, onClick }) => {
   let baseGradient = "bg-gradient-to-br from-gray-700 to-gray-800";
 
   if (palabra.type === "noun") {
@@ -323,47 +290,28 @@ const ActiveCard = ({ palabra, flipped, direction, onClick, isSwipingOut }) => {
       baseGradient = `bg-gradient-to-br ${grammaticalCase.colors}`;
   }
 
-  // --- ANIMACIONES DE DESLIZAMIENTO ---
-  const swipeAnimationClasses = isSwipingOut
-    ? "-translate-x-[120%] rotate-[-15deg] opacity-0 duration-150 ease-in"
-    : "translate-x-0 rotate-0 opacity-100 duration-200 ease-out";
-
   return (
     <div
-      className={`study-card relative w-full transition-all ${swipeAnimationClasses}`}
-      style={{ perspective: "1200px" }}
+      className="study-card relative w-full cursor-pointer rounded-[2rem] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)]"
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      aria-label="Girar tarjeta"
+      aria-pressed={flipped}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onClick();
+        }
+      }}
     >
-      {/* Carta Principal */}
-      <div
-        onClick={onClick}
-        role="button"
-        tabIndex={0}
-        aria-label="Girar tarjeta"
-        aria-pressed={flipped}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            onClick();
-          }
-        }}
-        className="relative w-full h-full cursor-pointer transition-transform duration-300 transform-style-3d shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)]"
-        style={{ transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)" }}
-      >
-        <CardFace
-          palabra={palabra}
-          isFront={true}
-          isVisible={!flipped}
-          direction={direction}
-          baseGradientClasses={baseGradient}
-        />
-        <CardFace
-          palabra={palabra}
-          isFront={false}
-          isVisible={flipped}
-          direction={direction}
-          baseGradientClasses={baseGradient}
-        />
-      </div>
+      <CardFace
+        key={flipped ? "answer" : "prompt"}
+        palabra={palabra}
+        isFront={!flipped}
+        direction={direction}
+        baseGradientClasses={baseGradient}
+      />
     </div>
   );
 };
@@ -420,7 +368,7 @@ function StudyCards({ user, prepositionsOnly }) {
   const [friends, setFriends] = useState([]);
   const [sharedWords, setSharedWords] = useState([]);
   const [sharedLoading, setSharedLoading] = useState(false);
-  const [flipped, setFlipped] = useState(false);
+  const [revealedCardId, setRevealedCardId] = useState(null);
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState(null);
   const [lastReview, setLastReview] = useState(null);
@@ -484,7 +432,7 @@ function StudyCards({ user, prepositionsOnly }) {
     setRetryPool(null);
     setRound(1);
     setCycleSize(0);
-    setFlipped(false);
+    setRevealedCardId(null);
     setAnswer("");
     setFeedback(null);
     setLastReview(null);
@@ -527,6 +475,8 @@ function StudyCards({ user, prepositionsOnly }) {
     ownerUid,
   ).filter((word) => !done.includes(studyId(word, activeDirection, ownerUid)));
   const word = queue[0];
+  const cardId = word ? studyId(word, activeDirection, ownerUid) : null;
+  const flipped = cardId !== null && revealedCardId === cardId;
   const categories = [
     ...new Map(
       source
@@ -543,14 +493,13 @@ function StudyCards({ user, prepositionsOnly }) {
     const result = checkAnswer(answer, word, activeDirection);
     setFeedback(result);
     setErrorType(result.type || "meaning");
-    setFlipped(true);
+    setRevealedCardId(cardId);
   };
   const rate = (rating, reason = errorType) => {
     if (!word || !flipped || busy) return;
     setBusy(true);
     setError("");
     try {
-      const cardId = studyId(word, activeDirection, ownerUid);
       recordReview(user.uid, {
         cardId,
         wordId: word.baseWordId || word.id,
@@ -579,7 +528,7 @@ function StudyCards({ user, prepositionsOnly }) {
       }));
       setLastReview({ word, rating, reason, feedback });
       setDone((previous) => [...previous, cardId]);
-      setFlipped(false);
+      setRevealedCardId(null);
       setAnswer("");
       setFeedback(null);
       setErrorType("meaning");
@@ -604,7 +553,7 @@ function StudyCards({ user, prepositionsOnly }) {
     setDone([]);
     setSession({ total: 0, correct: 0, incorrect: [] });
     setLastReview(null);
-    setFlipped(false);
+    setRevealedCardId(null);
     setAnswer("");
     setFeedback(null);
     sessionId.current = crypto.randomUUID();
@@ -878,15 +827,14 @@ function StudyCards({ user, prepositionsOnly }) {
               </div>
             ) : (
               <ActiveCard
-                key={word.id}
+                key={cardId}
                 palabra={word}
                 flipped={flipped}
                 direction={practice === "listen" ? "es-de" : direction}
                 onClick={() => {
-                  setFlipped(!flipped);
+                  setRevealedCardId(flipped ? null : cardId);
                   setFeedback(null);
                 }}
-                isSwipingOut={false}
               />
             )}
             {flipped && (
@@ -918,7 +866,7 @@ function StudyCards({ user, prepositionsOnly }) {
             )}
             {!flipped && (
               <button
-                onClick={() => setFlipped(true)}
+                onClick={() => setRevealedCardId(cardId)}
                 className={`w-full py-3 rounded-xl ${practice === "cards" ? "bg-blue-600 font-semibold" : "text-gray-400 text-sm"}`}
               >
                 Mostrar respuesta

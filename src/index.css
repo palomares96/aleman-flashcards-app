@@ -3,20 +3,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Clases utilitarias para el efecto flip 3D */
-.perspective-1000 {
-  perspective: 1000px;
-}
-.transform-style-3d {
-  transform-style: preserve-3d;
-}
-.backface-hidden {
-  backface-visibility: hidden;
-}
-.rotate-y-180 {
-  transform: rotateY(180deg);
-}
-
 /* The navigation participates in layout: it can never cover an answer. */
 .app-shell {
   height: 100vh;
@@ -169,11 +155,5 @@ summary:focus-visible {
   }
   .study-card-word {
     font-size: clamp(1.5rem, 6vw, 2.25rem);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .study-card,
-  .study-card > div {
-    transition: none;
   }
 }
